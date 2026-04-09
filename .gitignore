@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local runtime files
+*.log
+nhat_ky_trade_hybrid.txt
+bot_runtime_state.json
+bot_runtime_state_dual.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
