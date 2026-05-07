@@ -1,0 +1,98 @@
+{
+    "base": {
+        "LONG": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.75,
+            "PF_shrunk": 1.132,
+            "PF_raw": 1.148,
+            "min_trades": 469,
+            "bootstrap_ci_lower": 0.972,
+            "sample_size": 7228,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        },
+        "SHORT": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.99,
+            "PF_shrunk": 0.0,
+            "PF_raw": 0.0,
+            "min_trades": 0,
+            "bootstrap_ci_lower": 0.0,
+            "sample_size": 6067,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        }
+    },
+    "0": {
+        "LONG": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.75,
+            "PF_shrunk": 1.132,
+            "PF_raw": 1.148,
+            "min_trades": 469,
+            "bootstrap_ci_lower": 0.974,
+            "sample_size": 7228,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        },
+        "SHORT": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.99,
+            "PF_shrunk": 0.0,
+            "PF_raw": 0.0,
+            "min_trades": 0,
+            "bootstrap_ci_lower": 0.0,
+            "sample_size": 6067,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        }
+    },
+    "1": {
+        "LONG": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.99,
+            "PF_shrunk": 0.0,
+            "PF_raw": 0.0,
+            "min_trades": 0,
+            "bootstrap_ci_lower": 0.0,
+            "sample_size": 0,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        },
+        "SHORT": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.99,
+            "PF_shrunk": 0.0,
+            "PF_raw": 0.0,
+            "min_trades": 0,
+            "bootstrap_ci_lower": 0.0,
+            "sample_size": 0,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        }
+    },
+    "2": {
+        "LONG": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.99,
+            "PF_shrunk": 0.0,
+            "PF_raw": 0.0,
+            "min_trades": 0,
+            "bootstrap_ci_lower": 0.0,
+            "sample_size": 0,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        },
+        "SHORT": {
+            "A": 1.0,
+            "B": 0.0,
+            "Threshold": 0.99,
+            "PF_shrunk": 0.0,
+            "PF_raw": 0.0,
+            "min_trades": 0,
+            "bootstrap_ci_lower": 0.0,
+            "sample_size": 0,
+            "last_train_time": "2026-05-07T08:38:58.125243"
+        }
+    }
+}
