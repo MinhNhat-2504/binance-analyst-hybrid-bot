@@ -1,0 +1,11 @@
+{
+    "train_time_utc": "2026-05-07T08:39:14.641170",
+    "feature_hash": "03f75e1e662581ec6815e55fe6a6e016",
+    "expert_models_file": "expert_models_v8.pkl",
+    "ensemble_weights_file": "ensemble_weights_v8.pkl",
+    "meta_model_file": "xgb_v8_meta_model.pkl",
+    "meta_features_file": "xgb_v8_meta_features.pkl",
+    "calibration_file": "model_calibrations.json",
+    "required_features_count": 181,
+    "author": "Quant_Director"
+}
