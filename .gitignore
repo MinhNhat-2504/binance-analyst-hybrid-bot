@@ -1,4 +1,35 @@
+# Environment & API Keys
 .env
+.env.local
+
+# Python
 __pycache__/
-*.log
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Jupyter
 .ipynb_checkpoints/
+*.log
+
+# Model files (too large for repo)
+*.keras
+*.pkl
+*.joblib
+
+# Runtime state & data
+*.csv
+bot_runtime_state_*.json
+shadow_ledger_*.csv
+nhat_ky_trade_*.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

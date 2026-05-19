@@ -1,76 +1,72 @@
-# Binance Analyst Hybrid Bot
+# Binance Analyst
 
-A multi-asset crypto analysis and trading-bot project focused on Binance data.
+Dự án phân tích và giao dịch đa tài sản trên Binance bằng ensemble ML models (XGBoost + Deep Learning + XGBoost gates). Bao gồm notebook huấn luyện, analysis dashboard, và logic bot thương mại.
 
-This project combines:
-- feature engineering on OHLCV market data
-- dual XGBoost classifiers (LONG and SHORT)
-- Optuna hyperparameter tuning
-- Autoencoder-based anomaly kill-switch
-- live bot logic with sentiment and order-book gatekeepers
-- portfolio-level meta-agent correlation risk filter
+## ⚡ Bắt đầu nhanh
 
-## Repository Contents
+1. **Clone repo** và tạo file `.env`:
+   ```
+   BINANCE_API_KEY=your_key_here
+   BINANCE_API_SECRET=your_secret_here
+   ```
 
-- `binance-analyst.ipynb`: Main end-to-end notebook (data -> training -> tuning -> autoencoder -> live bot loop)
-- `live_bot.py`: Script form of bot runtime logic
-- `xgb_v8_long_fee_aware_multi.pkl`: Trained LONG model artifact
-- `xgb_v8_short_fee_aware_multi.pkl`: Trained SHORT model artifact
-- `xgb_v8_meta.pkl`: Metadata for model features and lag settings
-- `autoencoder_killswitch.keras`: Autoencoder model artifact
-- `scaler_ae.pkl`, `ae_meta.pkl`: Autoencoder scaler and threshold metadata
-- `bot_runtime_state.json`, `bot_runtime_state_dual.json`: Runtime state snapshots
-- `nhat_ky_trade_hybrid.txt`: Runtime log file
+2. **Cài dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Main Pipeline
+3. **Chạy notebook chính**:
+   - `binance-analyst.ipynb` - Bot runtime & analysis (chạy end-to-end)
+   - `Model_Training_Lab.ipynb` - Huấn luyện mô hình từ dữ liệu mới
 
-1. Fetch and process 1h data for multiple symbols.
-2. Build technical and regime features.
-3. Generate fee-aware dual labels (LONG and SHORT).
-4. Train XGBoost dual models.
-5. (Optional) Auto-tune model hyperparameters with Optuna.
-6. Train Autoencoder for anomaly detection kill-switch.
-7. Run live bot with:
-   - setup filters
-   - sentiment gatekeeper
-   - order-book gatekeeper
-   - correlation-aware meta-agent budget control
+## 📚 Notebook & Script
 
-## Requirements
+| File | Mục đích |
+|------|---------|
+| [binance-analyst.ipynb](binance-analyst.ipynb) | Bot runtime, load models, giao dịch & tracking |
+| [Model_Training_Lab.ipynb](Model_Training_Lab.ipynb) | Huấn luyện XGBoost, LSTM, gates từ OHLCV data |
+| [train_lstm.ipynb](train_lstm.ipynb) | Thử nghiệm mô hình LSTM sequence |
+| [Dashboard_Analytics.ipynb](Dashboard_Analytics.ipynb) | Phân tích outcome ledger, PnL breakdown |
+| [analysis.py](analysis.py) | Utility analysis functions |
+| [deep_root_cause_audit.py](deep_root_cause_audit.py) | Deep dive vào root cause losses |
+| [fast_feedback_audit.py](fast_feedback_audit.py) | Quick diagnostics |
 
-Python 3.10+ recommended.
+## 🎯 Artifacts (git ignored)
 
-Install dependencies:
+Files sau được ignore vì kích thước lớn hoặc data động:
+- **Models**: `*.keras`, `*.pkl` (LSTM, XGBoost, gates)
+- **Config**: `model_calibrations.json`, `optimized_gates_v1.json`, `feature_drift_baseline.json`, `toxic_zones_blacklist.json`
+- **Runtime state**: `bot_runtime_state_dual.json`, `shadow_ledger_*.csv`
+- **API keys**: `.env` file
 
-```bash
-pip install numpy pandas requests schedule feedparser joblib scikit-learn xgboost optuna tensorflow python-binance
+Để chạy, bạn cần **regenerate models** bằng cách chạy `Model_Training_Lab.ipynb` trên dữ liệu mới.
+
+## ⚙️ Workflow
+
+```
+1. Chuẩn bị dữ liệu (fetch từ Binance hoặc CSV)
+   ↓
+2. Chạy Model_Training_Lab → generate models
+   ↓
+3. Chạy binance-analyst.ipynb → load models, test bot logic
+   ↓
+4. Phân tích outcome với Dashboard_Analytics.ipynb
 ```
 
-## How To Run
+## ⚠️ Lưu ý
 
-### Option 1: Notebook
+- **TRADE_LIVE=False** được khuyến khích cho test ban đầu. Chỉ bật khi confident vào logic.
+- Mô hình XGBoost/gates được huấn luyện trên dữ liệu lịch sử; thường xuyên retrain trên dữ liệu mới.
+- Cost (fee Binance ~18 bps round-trip) đã include trong model calibration.
+- Gating network phải tuning phù hợp để tránh overfitting.
 
-Open `binance-analyst.ipynb` and run cells in order:
-- data + features
-- model training
-- optional auto-tuning
-- autoencoder training
-- bot runtime
+## 📦 Dependencies
 
-### Option 2: Script
-
-Run:
-
+Xem [requirements.txt](requirements.txt) hoặc cài:
 ```bash
-python live_bot.py
+pip install numpy pandas scikit-learn xgboost tensorflow keras joblib python-binance python-dotenv feedparser
 ```
 
-## Notes
+## 📄 Disclaimer
 
-- The bot is currently configured for Binance `testnet=True` in the provided code.
-- Review risk parameters (`BUY_PROBA_THRESHOLD`, stop-loss/take-profit/trailing values) before live use.
-- Keep credentials secure even in private repositories.
-
-## Disclaimer
-
-This software is for research and educational use. Trading crypto involves risk. Use at your own responsibility.
+Dự án chỉ phục vụ mục đích **nghiên cứu & giáo dục**. Giao dịch crypto có **rủi ro cao**; bạn chịu trách nhiệm khoản lỗi khi deploy live.
