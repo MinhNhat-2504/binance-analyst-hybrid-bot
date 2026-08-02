@@ -1,0 +1,45 @@
+{
+  "protocol_version": "CLEAN_DAILY_OOS_V1",
+  "declared_utc": "2026-08-02T14:37:49Z",
+  "as_of_utc": "2026-08-01T23:59:59.999Z",
+  "temporal_cutoff_entry_utc": "2026-04-03T00:00:00Z",
+  "execution": {
+    "decision": "after completed UTC daily bar",
+    "base_entry": "next daily open",
+    "latency_stress_entry": "second next daily open",
+    "holding_days": 1,
+    "base_cost_bps_per_leg": 10.0,
+    "stress_cost_bps_per_leg": 20.0,
+    "terminal_liquidation_charged": true,
+    "gross_exposure": 1.0,
+    "net_notional": 0.0
+  },
+  "routes": {
+    "carry": {
+      "lookback_days": 7,
+      "tail_fraction": 0.2,
+      "selection": "long low funding percentile, short high funding percentile"
+    },
+    "trained_ridge": {
+      "target": "within-day rank(price_return - realized_funding)",
+      "tail_fraction": 0.2,
+      "candidate_count": 6,
+      "selection_statistic": "median fold net bps/day",
+      "model_selection_data": "discovery symbols before temporal cutoff only"
+    }
+  },
+  "holdouts": [
+    "disjoint symbols before cutoff",
+    "discovery symbols after cutoff",
+    "disjoint symbols after cutoff"
+  ],
+  "gate": {
+    "adjusted_alpha_for_two_routes": 0.025,
+    "requires_positive_base_and_stress_net": true,
+    "requires_base_hac_95_ci_lower_above_zero": true,
+    "requires_base_shift_p_below_adjusted_alpha": true,
+    "requires_positive_latency_stress": true,
+    "live_activation_permitted": false
+  },
+  "epistemic_caveat": "The historical carry route and both symbol universes were inspected before this protocol. The post-cutoff slice is a leak-free replay in code, but not a pristine researcher-unseen temporal holdout. Only future paper data after this freeze can close that gap. The trained Ridge holdout is first evaluated by run_clean_oos.py under this fixed protocol."
+}

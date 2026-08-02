@@ -1,0 +1,48 @@
+{
+  "stage": "PAPER_SHADOW_ONLY",
+  "selected_route": "carry_7d",
+  "selection_basis": "positive point estimates only; this is not a passed profit gate",
+  "historical_research_gate_passed": false,
+  "profit_verified": false,
+  "live_enabled": false,
+  "capital_authorized": 0.0,
+  "reason": "Historical replay is not a pristine future holdout and the statistical gate must remain closed until genuinely new paper observations accumulate.",
+  "forward_requirements": {
+    "minimum_calendar_days": 60,
+    "minimum_active_days": 40,
+    "same_frozen_symbols_features_and_cost_contract": true,
+    "base_hac_95_ci_lower_above_zero": true,
+    "stress_20bps_per_leg_net_positive": true,
+    "shift_permutation_p_below_0_05_for_single_frozen_route": true,
+    "max_drawdown_under_25pct": true,
+    "paper_fills_include_observed_latency_spread_and_slippage": true,
+    "no_live_activation_without_new_review": true
+  },
+  "selected_route_definition": {
+    "route": "carry_7d",
+    "config": {
+      "lookback_days": 7,
+      "tail_fraction": 0.2,
+      "cost_per_leg_bps": 10.0,
+      "min_history_days": 30,
+      "min_funding_observations": 18,
+      "min_holding_funding_observations": 2,
+      "min_symbols": 10,
+      "execution_lag_bars": 1
+    },
+    "protocol_sha256": "8e2942a2eba9accab04a582ae58902c9df9f2a0892bcb8d9e158ee2304a392f2"
+  },
+  "selected_route_definition_sha256": "cc830056ab2666c5348b705e1c6fd41e48df6fc0196ad5f8b6d686908f301a0a",
+  "protocol_sha256": "8e2942a2eba9accab04a582ae58902c9df9f2a0892bcb8d9e158ee2304a392f2",
+  "code_sha256": {
+    "run_clean_oos.py": "a0260a79f4917ca124378c4d55b2fb70727d636cf3223c357bf6299f83d8d73d",
+    "clean_research/__init__.py": "9d204537ca90808e653879561f3404f5b0259b22731c10b9bd8b7ce0d67c6913",
+    "clean_research/schema.py": "482c98e79318f7839d56957fb78b667b3d9515372580caec0d23b048442432ec",
+    "clean_research/data.py": "19f45ea9f9cf7cbff6039cd636ce8e10003b0c2100d4ff6979811b53d07b58b2",
+    "clean_research/ledger.py": "d383e3b09319f33bd82ad7d44a28ce3963b80a2e83ef49cae863c2a3d76707dc",
+    "clean_research/carry.py": "d73c6a6430b9cbc9721e44a650321189d2dd3b5327a17000b065db164e32f82b",
+    "clean_research/model.py": "53c8cb9ad4f6c27f203301f12d97c7b7f7d4b89ce7e84d3f86649836b555a7a1",
+    "tests/test_clean_research.py": "278cbf4f5bbc16d4cbf6b4404395dad200b3701dd73a662d30325d5c6a7644d8",
+    "pytest.ini": "b160d82f7811555051f8966d8e02750a985227c1d022208c784e606946f2eada"
+  }
+}
