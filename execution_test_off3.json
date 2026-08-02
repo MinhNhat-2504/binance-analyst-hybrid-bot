@@ -1,0 +1,76 @@
+{
+  "generated_utc": "2026-07-17T11:21:55.659011+00:00",
+  "config": {
+    "side": "SHORT",
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "DOGEUSDT",
+      "AVAXUSDT",
+      "LINKUSDT",
+      "NEARUSDT",
+      "ADAUSDT"
+    ],
+    "days": 540,
+    "folds": 8,
+    "offset_bps": 3.0,
+    "time_limit": 12,
+    "out": "execution_test_off3.json"
+  },
+  "n_signals": 9925,
+  "table": [
+    {
+      "mode": "taker",
+      "wait_bars": 0,
+      "n_signals": 9925,
+      "n_filled": 9925,
+      "fill_rate": 1.0,
+      "net_bps_filled": -9.78462900788956,
+      "net_bps_all_signals": -9.78462900788956,
+      "adverse_selection_bps": NaN
+    },
+    {
+      "mode": "maker",
+      "wait_bars": 1,
+      "n_signals": 9925,
+      "n_filled": 9040,
+      "fill_rate": 0.9108312342569269,
+      "net_bps_filled": -1.6901813548661921,
+      "net_bps_all_signals": -1.5394699695708187,
+      "adverse_selection_bps": 44.2939860248216
+    },
+    {
+      "mode": "maker",
+      "wait_bars": 2,
+      "n_signals": 9925,
+      "n_filled": 9273,
+      "fill_rate": 0.9343073047858942,
+      "net_bps_filled": -1.7402909466415932,
+      "net_bps_all_signals": -1.6259665438999993,
+      "adverse_selection_bps": 61.11959292978465
+    },
+    {
+      "mode": "maker",
+      "wait_bars": 4,
+      "n_signals": 9925,
+      "n_filled": 9445,
+      "fill_rate": 0.9516372795969773,
+      "net_bps_filled": -1.9659423725227039,
+      "net_bps_all_signals": -1.8708640512319334,
+      "adverse_selection_bps": 83.43887814469392
+    },
+    {
+      "mode": "maker",
+      "wait_bars": 8,
+      "n_signals": 9925,
+      "n_filled": 9561,
+      "fill_rate": 0.9633249370277078,
+      "net_bps_filled": -2.0728884895187027,
+      "net_bps_all_signals": -1.9968651736310645,
+      "adverse_selection_bps": 100.59601985754267
+    }
+  ]
+}

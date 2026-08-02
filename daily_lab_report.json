@@ -1,0 +1,120 @@
+{
+  "generated_utc": "2026-08-02T15:57:33.652731+00:00",
+  "config": {
+    "days": 600,
+    "n_perm": 200,
+    "quick": false,
+    "no_cache": false,
+    "out": "daily_lab_report.json",
+    "n_symbols": 42,
+    "cost_per_leg": 0.001
+  },
+  "bonferroni_bar": 0.0071428571428571435,
+  "cells": {
+    "XS-MOM-7d": {
+      "n_days": 591,
+      "ann_ret_pct": -18.28855018001991,
+      "ann_vol_pct": 22.06962868006134,
+      "sharpe": -0.8286750287077815,
+      "max_dd_pct": -40.03389743198564,
+      "total_ret_pct": -28.487066650718173,
+      "funding_share_pct": 3.9569352300735314,
+      "avg_daily_turnover": 0.6006074939714339,
+      "null_mean_sharpe": -1.546355105927674,
+      "null_p95_sharpe": -0.20771259312063958,
+      "p_value": 0.17412935323383086
+    },
+    "XS-MOM-30d": {
+      "n_days": 568,
+      "ann_ret_pct": 2.449590740466469,
+      "ann_vol_pct": 21.97221529218691,
+      "sharpe": 0.11148583371734565,
+      "max_dd_pct": -21.232320316531407,
+      "total_ret_pct": 0.06247712160789565,
+      "funding_share_pct": 4.773125004141323,
+      "avg_daily_turnover": 0.2735345946948618,
+      "null_mean_sharpe": -0.7609446804559155,
+      "null_p95_sharpe": 0.5344036264972437,
+      "p_value": 0.13930348258706468
+    },
+    "XS-MOM-90d": {
+      "n_days": 508,
+      "ann_ret_pct": -17.064006330097463,
+      "ann_vol_pct": 20.830435615312712,
+      "sharpe": -0.8191862448403863,
+      "max_dd_pct": -29.764249813423906,
+      "total_ret_pct": -23.49817721506894,
+      "funding_share_pct": -0.9062195732787182,
+      "avg_daily_turnover": 0.14714338712669264,
+      "null_mean_sharpe": -0.4488257379205912,
+      "null_p95_sharpe": 0.9011492735124432,
+      "p_value": 0.6666666666666666
+    },
+    "TREND-50": {
+      "n_days": 549,
+      "ann_ret_pct": -83.25856176449993,
+      "ann_vol_pct": 72.67739727002636,
+      "sharpe": -1.1455908561937103,
+      "max_dd_pct": -81.83194965177083,
+      "total_ret_pct": -80.8572873518272,
+      "funding_share_pct": -0.2272502150991185,
+      "avg_daily_turnover": 0.3851402564500772,
+      "null_mean_sharpe": -1.0089084525812864,
+      "null_p95_sharpe": -0.5580761779968055,
+      "p_value": 0.6915422885572139
+    },
+    "TREND-200": {
+      "n_days": 399,
+      "ann_ret_pct": -79.84031455218809,
+      "ann_vol_pct": 66.10987054521591,
+      "sharpe": -1.207691285639127,
+      "max_dd_pct": -76.55770014585337,
+      "total_ret_pct": -67.30889308666276,
+      "funding_share_pct": -1.367453483713624,
+      "avg_daily_turnover": 0.14320609544970972,
+      "null_mean_sharpe": -0.8205652682174142,
+      "null_p95_sharpe": -0.16418420583979998,
+      "p_value": 0.845771144278607
+    },
+    "CARRY-3d": {
+      "n_days": 596,
+      "ann_ret_pct": -0.5512300288636888,
+      "ann_vol_pct": 17.874871562068282,
+      "sharpe": -0.03083826515617808,
+      "max_dd_pct": -21.845221251008105,
+      "total_ret_pct": -3.4653884298549986,
+      "funding_share_pct": -1535.2909068425076,
+      "avg_daily_turnover": 0.5197086742787912,
+      "null_mean_sharpe": -1.3300370252566804,
+      "null_p95_sharpe": -0.09657854419143665,
+      "p_value": 0.04975124378109453
+    },
+    "CARRY-7d": {
+      "n_days": 592,
+      "ann_ret_pct": 32.848318416901265,
+      "ann_vol_pct": 18.417968865126326,
+      "sharpe": 1.7834929930356338,
+      "max_dd_pct": -14.682646662905864,
+      "total_ret_pct": 65.71503555766296,
+      "funding_share_pct": 26.168591316360697,
+      "avg_daily_turnover": 0.29056835160758365,
+      "null_mean_sharpe": -0.7314009330687287,
+      "null_p95_sharpe": 0.6180722245060873,
+      "p_value": 0.004975124378109453
+    },
+    "BTC-HOLD": {
+      "n_days": 598,
+      "ann_ret_pct": -20.892595723838028,
+      "ann_vol_pct": 43.700577120258004,
+      "sharpe": -0.47808512153842875,
+      "max_dd_pct": -53.72196588333643,
+      "total_ret_pct": -39.29470539666183,
+      "funding_share_pct": 19.97505486325148,
+      "avg_daily_turnover": 0.001669449081803005
+    }
+  },
+  "candidates": [
+    "CARRY-7d"
+  ],
+  "leads": []
+}

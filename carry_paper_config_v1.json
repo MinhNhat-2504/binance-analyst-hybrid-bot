@@ -1,0 +1,41 @@
+{
+  "version": "CARRY_PAPER_V1",
+  "locked_utc": "2026-08-02",
+  "strategy": "CARRY-7d",
+  "rule": "rank universe by trailing 7d funding-rate sum; SHORT top 20% (crowded longs pay), LONG bottom 20%; equal weight, 0.5 gross per side; rebalance daily at next-day open",
+  "universe_note": "the 42-symbol DISCOVERY universe exactly as pre-registered in run_daily_lab.py - the hold-out (33 disjoint) scored higher but switching to it post-hoc would be cherry-picking",
+  "universe": [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "AVAXUSDT",
+    "LINKUSDT", "NEARUSDT", "ADAUSDT", "LTCUSDT", "BCHUSDT", "DOTUSDT", "ATOMUSDT",
+    "UNIUSDT", "FILUSDT", "TRXUSDT", "ETCUSDT", "XLMUSDT", "APTUSDT", "ARBUSDT",
+    "OPUSDT", "INJUSDT", "SUIUSDT", "TIAUSDT", "SEIUSDT", "RUNEUSDT", "AAVEUSDT",
+    "MKRUSDT", "CRVUSDT", "SANDUSDT", "MANAUSDT", "GALAUSDT", "1000PEPEUSDT",
+    "1000SHIBUSDT", "WLDUSDT", "TONUSDT", "ENAUSDT", "JTOUSDT", "PYTHUSDT",
+    "TAOUSDT", "ORDIUSDT"
+  ],
+  "funding_lookback_days": 7,
+  "quantile": 0.2,
+  "cost_per_leg": 0.0010,
+  "execution": "next_day_open",
+  "funding_boundary_rule": "the 00:00 UTC settlement of day t is credited to the weights held BEFORE that day's rebalance (audit finding FA-2/R6: crediting it to the fresh weights is systematically favorable)",
+  "paper_start_utc": "2026-08-03",
+  "backtest_reference": {
+    "discovery_sharpe": 1.78,
+    "discovery_ann_pct": 32.8,
+    "discovery_maxdd_pct": -14.7,
+    "holdout_sharpe": 1.85,
+    "p_value_both": 0.005,
+    "report_files": ["daily_lab_report.json", "carry_holdout_report.json"]
+  },
+  "go_live_gate": {
+    "min_paper_days": 60,
+    "recommended_paper_days": 90,
+    "paper_sharpe_min": 0.5,
+    "paper_total_return_min_pct": 0.0,
+    "max_paper_drawdown_pct": -20.0,
+    "note": "ALL conditions required. If any fails at day 60, extend to 90; if still failing, the edge did not survive contact with the present - stop, do not tune."
+  },
+  "no_tune_pledge": "No parameter in this file may change during the paper period. The executor refuses to run if this file's hash differs from the one recorded at first run. Changing the file and resetting state restarts the paper clock from day zero.",
+  "live_enabled": false,
+  "capital_authorized_usd": 0
+}
