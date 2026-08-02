@@ -7,7 +7,9 @@ while the bot notebook is still collecting rows. It never writes to the ledger.
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import re
 import time
 from pathlib import Path
 
@@ -16,13 +18,38 @@ import pandas as pd
 
 
 DEFAULT_LEDGER = "shadow_ledger_candidates_v4.csv"
+CANARY_KILL_SWITCH = Path("canary_kill_switch.json")
+HEARTBEAT_PATH = Path("bot_heartbeat.json")
+STOP_HIT_WFA_REPORT = Path("stop_hit_wfa_report.json")
+MAX_OPEN_SHORT0_CANARY_TRADES = 1
+EXPECTED_SHORT0_MIN_DEPLOY_PROBA = 0.82
+EXPECTED_SHORT0_SCOUT_ENABLED = False
+SHORT0_STORM_MIN_PROBA = 0.75
+SHORT0_STORM_WINDOW = 40
+SHORT0_STORM_MIN_SAMPLES = 20
+SHORT0_STORM_MAX_PF = 0.70
+SHORT0_STORM_MAX_WIN = 0.35
+SHORT0_STORM_MAX_PNL = -0.030
+SHORT0_STORM_MIN_SL_FRAC = 0.60
+SHORT0_STORM_RELEASE_MIN_PF = 1.15
+SHORT0_STORM_RELEASE_MIN_PNL = 0.010
+SHORT0_STORM_RELEASE_MIN_WIN = 0.50
+SHORT0_STORM_RECOVERY_MULT = 0.12
+SHORT0_STORM_RECOVERY_WINDOW = 32
+SHORT0_STORM_RECOVERY_SLICE = 8
+SHORT0_STORM_RECOVERY_MIN_SLICES = 2
+SHORT0_STORM_RECOVERY_MIN_PF = 1.10
+SHORT0_STORM_RECOVERY_MIN_PNL = 0.002
+SHORT0_STORM_RECOVERY_MIN_WIN = 0.45
+SHORT0_STORM_RECOVERY_MAX_SL_FRAC = 0.50
+SHORT0_STORM_RECOVERY_MIN_RECENT5_PNL = 0.0
 
 
 def read_csv_with_retry(path: Path, retries: int = 3, delay_sec: float = 0.35) -> pd.DataFrame:
     last_error: Exception | None = None
     for _ in range(retries):
         try:
-            return pd.read_csv(path)
+            return pd.read_csv(path, low_memory=False)
         except Exception as exc:  # pragma: no cover - defensive for concurrent notebook writes
             last_error = exc
             time.sleep(delay_sec)
@@ -84,6 +111,15 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
         "_symbol_status": ["symbol_prior_status"],
         "_reason": ["profit_focus_reason"],
         "_exit_reason": ["Exit_Reason"],
+        "_price": ["price", "Price", "Entry_Price"],
+        "_edge_after_cost": ["edge_after_cost"],
+        "_confidence": ["confidence_multiplier"],
+        "_policy_source": ["policy_source"],
+        "_policy_version": ["policy_version"],
+        "_route": ["route_name"],
+        "_route_decision": ["route_policy_decision"],
+        "_stop_hit": ["stop_hit_probability"],
+        "_stop_hit_eligible": ["stop_hit_model_eligible"],
     }.items():
         source = col(out, *candidates)
         if source is None:
@@ -99,6 +135,11 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     out["_ret_15m"] = pd.to_numeric(out["_ret_15m"], errors="coerce")
     out["_ret_30m"] = pd.to_numeric(out["_ret_30m"], errors="coerce")
     out["_ret_1h"] = pd.to_numeric(out["_ret_1h"], errors="coerce")
+    out["_price"] = pd.to_numeric(out["_price"], errors="coerce")
+    out["_edge_after_cost"] = pd.to_numeric(out["_edge_after_cost"], errors="coerce")
+    out["_confidence"] = pd.to_numeric(out["_confidence"], errors="coerce")
+    out["_stop_hit"] = pd.to_numeric(out["_stop_hit"], errors="coerce")
+    out["_stop_hit_eligible_bool"] = as_bool(out["_stop_hit_eligible"])
     out["_optimizer_bool"] = as_bool(out["_optimizer"]) if "_optimizer" in out else False
     stage_upper = out["_stage"].fillna("").astype(str).str.upper()
     pass_live_bool = as_bool(out["_pass_live_gate"]) if "_pass_live_gate" in out else False
@@ -279,13 +320,54 @@ def print_execution_layer_health(df: pd.DataFrame) -> None:
         print(pd.DataFrame(stage_rows).sort_values("Rows", ascending=False).to_string(index=False))
 
 
+def print_open_paper_trades(df: pd.DataFrame, horizon_hours: float = 12.0, tz_name: str = "Asia/Saigon", limit: int = 12) -> None:
+    """Show still-open paper trades so fast feedback does not hide pending tests."""
+    open_paper = df[
+        df["_paper_bool"]
+        & df["_size_usd_num"].gt(0)
+        & df["_outcome"].isna()
+        & df["_ts"].notna()
+    ].copy()
+    if open_paper.empty:
+        return
+
+    now = pd.Timestamp.now(tz="UTC")
+    horizon = pd.Timedelta(hours=float(horizon_hours))
+    open_paper["_age_min"] = (now - open_paper["_ts"]).dt.total_seconds() / 60.0
+    open_paper["_ready_at"] = open_paper["_ts"] + horizon
+    open_paper["_min_to_final"] = (open_paper["_ready_at"] - now).dt.total_seconds() / 60.0
+    open_paper["_entry_local"] = open_paper["_ts"].dt.tz_convert(tz_name).dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+    open_paper["_ready_local"] = open_paper["_ready_at"].dt.tz_convert(tz_name).dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+    open_paper["_age_min"] = open_paper["_age_min"].round(1)
+    open_paper["_min_to_final"] = open_paper["_min_to_final"].clip(lower=0).round(1)
+    open_paper["_price"] = pd.to_numeric(open_paper["_price"], errors="coerce").round(8)
+    open_paper["_size_usd_num"] = open_paper["_size_usd_num"].round(4)
+    open_paper["_proba"] = open_paper["_proba"].round(6)
+
+    cols = [
+        "_entry_local",
+        "_symbol",
+        "_side",
+        "_regime",
+        "_proba",
+        "_price",
+        "_size_usd_num",
+        "_age_min",
+        "_min_to_final",
+        "_ready_local",
+        "_reason",
+    ]
+    print("\nOpen paper trades waiting for final backfill")
+    print(open_paper.sort_values("_ts").tail(limit)[cols].to_string(index=False))
+
+
 def policy_grid(df: pd.DataFrame) -> pd.DataFrame:
     status = df["_symbol_status"].astype(str)
     status_upper = status.str.upper()
     promoted = status.isin(["PROMOTE_SYMBOL", "ADAPTIVE_PROMOTE_SYMBOL", "DISCOVERY_PROMOTE_SYMBOL_BUCKET"]) | status_upper.str.startswith("DISCOVERY_PROMOTE_SYMBOL_BUCKET")
     base = (df["_side"] == "SHORT") & (df["_regime"] == 0) & promoted
     rows = []
-    for threshold in [0.60, 0.62, 0.65, 0.70, 0.75]:
+    for threshold in [0.60, 0.62, 0.65, 0.70, 0.75, 0.80, 0.82]:
         mask = base & (df["_proba"] >= threshold)
         real = metrics(df.loc[mask, "_outcome"])
         fast = metrics(df.loc[mask, "_fast_pnl"])
@@ -317,6 +399,53 @@ def policy_grid(df: pd.DataFrame) -> pd.DataFrame:
                 "Fast_N": fast["n"],
                 "Fast_Total_%": round(fast["sum"] * 100, 3) if not pd.isna(fast["sum"]) else np.nan,
                 "Fast_PF": round(fast["pf"], 3) if np.isfinite(fast["pf"]) else fast["pf"],
+            }
+        )
+    mirror_base = (df["_side"] == "SHORT") & (df["_regime"] == 0) & status_upper.eq("MIRROR_SHORT_FROM_LONG_R0")
+    reason_upper = df["_reason"].fillna("").astype(str).str.upper()
+    paper_mirror = mirror_base & df["_paper_bool"]
+    scout_reason = reason_upper.str.contains("SHORT0_NEAR_MISS_SCOUT", regex=False)
+    canary_reason = reason_upper.str.contains("SHORT0_CANARY_EXACT_BUCKET", regex=False) | reason_upper.str.contains("SHORT0_CANARY_MIRROR_LONG_R0", regex=False)
+    canary_mirror_reason = reason_upper.str.contains("SHORT0_CANARY_MIRROR_LONG_R0", regex=False)
+    scout_hard_block = status_upper.isin(["BLOCK_SYMBOL", "ADAPTIVE_BLOCK_SYMBOL", "NO_SYMBOL_PRIOR:BLOCK_POCKET"]) | status_upper.str.endswith(":BLOCK_POCKET")
+    scout_eligible = (
+        (df["_side"] == "SHORT")
+        & (df["_regime"] == 0)
+        & df["_proba"].between(0.65, 0.699999)
+        & (df["_edge_after_cost"] >= 0.020)
+        & (df["_confidence"] >= 0.75)
+        & ~scout_hard_block
+    )
+    for label, mask in [
+        ("SHORT0 mirror-force all", mirror_base),
+        ("SHORT0 mirror-force paper", paper_mirror),
+        ("SHORT0 mirror-force paper open", paper_mirror & df["_outcome"].isna()),
+        ("SHORT0 mirror-force paper closed", paper_mirror & df["_outcome"].notna()),
+        ("SHORT0 mirror-force reason", reason_upper.str.contains("MIRROR_FORCE", regex=False)),
+        ("SHORT0 near-miss scout eligible", scout_eligible),
+        ("SHORT0 near-miss scout reason", scout_reason),
+        ("SHORT0 near-miss scout paper", scout_reason & df["_paper_bool"]),
+        ("SHORT0 near-miss scout paper open", scout_reason & df["_paper_bool"] & df["_outcome"].isna()),
+        ("SHORT0 near-miss scout paper closed", scout_reason & df["_paper_bool"] & df["_outcome"].notna()),
+        ("SHORT0 canary paper reason", canary_reason),
+        ("SHORT0 canary paper open", canary_reason & df["_paper_bool"] & df["_outcome"].isna()),
+        ("SHORT0 canary paper closed", canary_reason & df["_paper_bool"] & df["_outcome"].notna()),
+        ("SHORT0 canary mirror reason", canary_mirror_reason),
+        ("SHORT0 canary mirror open", canary_mirror_reason & df["_paper_bool"] & df["_outcome"].isna()),
+        ("SHORT0 canary mirror closed", canary_mirror_reason & df["_paper_bool"] & df["_outcome"].notna()),
+    ]:
+        real = metrics(df.loc[mask, "_outcome"])
+        fast = metrics(df.loc[mask, "_fast_pnl"])
+        rows.append(
+            {
+                "Policy": label,
+                "Rows": int(mask.sum()),
+                "Closed": real["n"],
+                "Diag_Total_%": round(real["sum"] * 100, 3) if not pd.isna(real["sum"]) else np.nan,
+                "Diag_PF": round(real["pf"], 3) if pd.notna(real["pf"]) and math.isfinite(real["pf"]) else real["pf"],
+                "Fast_N": fast["n"],
+                "Fast_Total_%": round(fast["sum"] * 100, 3) if not pd.isna(fast["sum"]) else np.nan,
+                "Fast_PF": round(fast["pf"], 3) if pd.notna(fast["pf"]) and math.isfinite(fast["pf"]) else fast["pf"],
             }
         )
     return pd.DataFrame(rows)
@@ -427,16 +556,297 @@ def print_recent_blockers(df: pd.DataFrame, recent_minutes: int) -> None:
     print(blocker_counts.to_string())
 
 
-def run_audit(ledger_path: str, recent_minutes: int) -> None:
+def print_runtime_policy_guard(df: pd.DataFrame, recent_minutes: int = 30) -> None:
+    """Catch stale notebook kernels after safety constants are changed on disk."""
+    newest = df["_ts"].max()
+    if pd.isna(newest):
+        recent = df.tail(80).copy()
+        title = "latest rows"
+    else:
+        cutoff = newest - pd.Timedelta(minutes=recent_minutes)
+        recent = df[df["_ts"] >= cutoff].copy()
+        title = f"last {recent_minutes} minutes"
+    if recent.empty:
+        return
+
+    reasons = recent["_reason"].fillna("").astype(str)
+    threshold_hits = []
+    for reason in reasons:
+        match = re.search(r"PROFIT_PROBA_TAIL_BLOCK:[0-9.]+<([0-9.]+)", reason)
+        if match:
+            threshold_hits.append(float(match.group(1)))
+
+    scout_rows = recent[reasons.str.contains("SHORT0_NEAR_MISS_SCOUT", case=False, regex=False)]
+    live_rows = recent[recent["_live_bool"]]
+
+    print(f"\nRuntime policy guard: {title}")
+    if threshold_hits:
+        latest_threshold = threshold_hits[-1]
+        status = "OK" if latest_threshold >= EXPECTED_SHORT0_MIN_DEPLOY_PROBA else "STALE_KERNEL_WARN"
+        print(
+            f"- Latest observed SHORT0 threshold={latest_threshold:.2f} "
+            f"| expected>={EXPECTED_SHORT0_MIN_DEPLOY_PROBA:.2f} | {status}"
+        )
+    else:
+        print("- No recent PROFIT_PROBA_TAIL_BLOCK threshold observed.")
+
+    if EXPECTED_SHORT0_SCOUT_ENABLED:
+        print(f"- Near-miss scout rows in window={len(scout_rows)} | scout expected enabled")
+    else:
+        status = "OK" if scout_rows.empty else "STALE_KERNEL_OR_OLD_ROWS_WARN"
+        print(f"- Near-miss scout rows in window={len(scout_rows)} | scout expected disabled | {status}")
+
+    print(f"- Live rows in window={len(live_rows)} | live should remain 0 until WFA/OOS proof")
+
+
+def print_canary_guard_audit(df: pd.DataFrame, recent_minutes: int) -> None:
+    reason_upper = df["_reason"].fillna("").astype(str).str.upper()
+    stage_upper = df["_stage"].fillna("").astype(str).str.upper()
+    canary_reason = reason_upper.str.contains("SHORT0_CANARY_EXACT_BUCKET", regex=False) | reason_upper.str.contains("SHORT0_CANARY_MIRROR_LONG_R0", regex=False)
+    canary_rows = df[canary_reason].copy()
+    open_canary = canary_rows[canary_rows["_paper_bool"] & canary_rows["_outcome"].isna()].copy()
+    closed_canary = canary_rows[canary_rows["_paper_bool"] & canary_rows["_outcome"].notna()].copy()
+    rejected_canary = df[
+        stage_upper.str.startswith("REJECTED_CANARY")
+        | reason_upper.str.contains("CANARY_OPEN_CAP", regex=False)
+        | reason_upper.str.contains("CANARY_DUPLICATE_OPEN", regex=False)
+        | reason_upper.str.contains("CANARY_RUNTIME_CAP", regex=False)
+    ].copy()
+
+    newest = df["_ts"].max()
+    if pd.isna(newest):
+        recent = df.tail(120).copy()
+        recent_title = "latest rows"
+    else:
+        cutoff = newest - pd.Timedelta(minutes=recent_minutes)
+        recent = df[df["_ts"] >= cutoff].copy()
+        recent_title = f"last {recent_minutes} minutes"
+    recent_reason = recent["_reason"].fillna("").astype(str).str.upper()
+    recent_stage = recent["_stage"].fillna("").astype(str).str.upper()
+    recent_canary_rejects = recent[
+        recent_stage.str.startswith("REJECTED_CANARY")
+        | recent_reason.str.contains("CANARY_OPEN_CAP", regex=False)
+        | recent_reason.str.contains("CANARY_DUPLICATE_OPEN", regex=False)
+        | recent_reason.str.contains("CANARY_RUNTIME_CAP", regex=False)
+    ]
+
+    print("\nCanary guard audit")
+    print(
+        f"- Canary rows={len(canary_rows)} | open={len(open_canary)} | closed={len(closed_canary)} "
+        f"| rejected_by_guard={len(rejected_canary)} | recent_guard_rejects={len(recent_canary_rejects)} ({recent_title})"
+    )
+    if open_canary.empty:
+        print("- Open cap status=OK | no open canary paper trades.")
+    else:
+        dup = (
+            open_canary.groupby(["_symbol", "_side", "_regime"], dropna=False)
+            .size()
+            .reset_index(name="open_count")
+            .sort_values("open_count", ascending=False)
+        )
+        max_open = int(dup["open_count"].max()) if not dup.empty else 0
+        cap_status = "OK" if len(open_canary) <= MAX_OPEN_SHORT0_CANARY_TRADES and max_open <= 1 else "CAP_VIOLATION_CHECK_RUNNING_KERNEL"
+        print(f"- Open cap status={cap_status} | total_open={len(open_canary)}/{MAX_OPEN_SHORT0_CANARY_TRADES} | max_same_symbol={max_open}")
+        view_cols = ["_ts", "_symbol", "_side", "_regime", "_proba", "_fast_pnl", "_policy_version", "_reason"]
+        print(open_canary.sort_values("_ts").tail(5)[view_cols].to_string(index=False))
+
+    if not closed_canary.empty:
+        m = metrics(closed_canary["_outcome"])
+        print(f"- Closed canary proof: n={m['n']} total={fmt_pct(m['sum'])} PF={fmt_pf(m['pf'])} win={m['win'] * 100:.1f}%")
+    else:
+        print("- Closed canary proof: n=0, still waiting for final 12h backfill.")
+
+    if CANARY_KILL_SWITCH.exists():
+        try:
+            state = json.loads(CANARY_KILL_SWITCH.read_text(encoding="utf-8"))
+        except Exception as exc:
+            state = {"read_error": str(exc)}
+        print(f"- Kill-switch file: {state}")
+    else:
+        print("- Kill-switch file: absent (armed but not triggered).")
+
+    if "_policy_version" in df.columns:
+        versions = canary_rows["_policy_version"].fillna("LEGACY_NO_VERSION").astype(str).replace("", "LEGACY_NO_VERSION")
+        if not versions.empty:
+            print("- Canary policy versions:")
+            print(versions.value_counts().head(8).to_string())
+
+
+def short0_sl_loss_frac(frame: pd.DataFrame) -> float:
+    if frame.empty:
+        return math.nan
+    pnl = pd.to_numeric(frame["_outcome"], errors="coerce")
+    exit_reason = frame["_exit_reason"].fillna("").astype(str).str.upper()
+    valid = pnl.notna()
+    if not bool(valid.any()):
+        return math.nan
+    toxic_sl = exit_reason.eq("SL_OR_TRAIL") & pnl.lt(0)
+    return float(toxic_sl[valid].mean())
+
+
+def short0_recovery_batches(scope: pd.DataFrame) -> tuple[bool, str]:
+    recent = scope.tail(SHORT0_STORM_RECOVERY_WINDOW).copy()
+    recent = recent.dropna(subset=["_outcome"])
+    need_n = SHORT0_STORM_RECOVERY_SLICE * SHORT0_STORM_RECOVERY_MIN_SLICES
+    if len(recent) < need_n:
+        return False, f"WAIT_N{len(recent)}/{need_n}"
+
+    batch_statuses = []
+    for i in range(SHORT0_STORM_RECOVERY_MIN_SLICES):
+        end = len(recent) - (SHORT0_STORM_RECOVERY_MIN_SLICES - 1 - i) * SHORT0_STORM_RECOVERY_SLICE
+        start = max(0, end - SHORT0_STORM_RECOVERY_SLICE)
+        batch = recent.iloc[start:end]
+        m = metrics(batch["_outcome"])
+        sl_frac = short0_sl_loss_frac(batch)
+        ok = bool(
+            m["n"] >= SHORT0_STORM_RECOVERY_SLICE
+            and m["pf"] >= SHORT0_STORM_RECOVERY_MIN_PF
+            and m["sum"] >= SHORT0_STORM_RECOVERY_MIN_PNL
+            and m["win"] >= SHORT0_STORM_RECOVERY_MIN_WIN
+            and sl_frac <= SHORT0_STORM_RECOVERY_MAX_SL_FRAC
+        )
+        batch_statuses.append((ok, m, sl_frac))
+
+    recent5_pnl = float(pd.to_numeric(recent["_outcome"], errors="coerce").dropna().tail(5).sum())
+    last_ok, last_m, last_sl = batch_statuses[-1]
+    status = (
+        f"last_batch_N{last_m['n']}_PF{fmt_pf(last_m['pf'])}_PNL{fmt_pct(last_m['sum'])}"
+        f"_W{last_m['win'] * 100:.1f}%_SL{last_sl * 100:.1f}%_R5{fmt_pct(recent5_pnl)}"
+    )
+    if recent5_pnl < SHORT0_STORM_RECOVERY_MIN_RECENT5_PNL:
+        return False, status
+    return all(item[0] for item in batch_statuses), status
+
+
+def print_short0_storm_recovery_gate(df: pd.DataFrame) -> None:
+    scope = df[
+        (df["_side"] == "SHORT")
+        & (df["_regime"] == 0)
+        & (df["_proba"] >= SHORT0_STORM_MIN_PROBA)
+        & df["_outcome"].notna()
+    ].sort_values("_ts").tail(SHORT0_STORM_WINDOW)
+
+    print("\nSHORT0 storm recovery gate")
+    if len(scope) < SHORT0_STORM_MIN_SAMPLES:
+        print(f"- State=WARMUP | high-proba closed rows={len(scope)}/{SHORT0_STORM_MIN_SAMPLES}")
+        return
+
+    m = metrics(scope["_outcome"])
+    sl_frac = short0_sl_loss_frac(scope)
+    recent5_pnl = float(pd.to_numeric(scope["_outcome"], errors="coerce").dropna().tail(5).sum())
+    release_ok = bool(
+        m["pf"] >= SHORT0_STORM_RELEASE_MIN_PF
+        and m["sum"] >= SHORT0_STORM_RELEASE_MIN_PNL
+        and m["win"] >= SHORT0_STORM_RELEASE_MIN_WIN
+        and sl_frac < SHORT0_STORM_MIN_SL_FRAC
+    )
+    storm = bool(
+        not release_ok
+        and m["sum"] <= SHORT0_STORM_MAX_PNL
+        and m["pf"] <= SHORT0_STORM_MAX_PF
+        and m["win"] <= SHORT0_STORM_MAX_WIN
+        and sl_frac >= SHORT0_STORM_MIN_SL_FRAC
+    )
+    recovery_ok, recovery_status = short0_recovery_batches(scope)
+    if storm and recovery_ok:
+        state = f"RECOVERY_PARTIAL(mult={SHORT0_STORM_RECOVERY_MULT:.2f}, paper-only)"
+    elif storm:
+        state = "LOCK"
+    elif release_ok:
+        state = "RELEASE"
+    else:
+        state = "NO_STORM_BUT_NOT_RELEASED"
+
+    print(
+        f"- State={state} | N={m['n']} PF={fmt_pf(m['pf'])} PnL={fmt_pct(m['sum'])} "
+        f"Win={m['win'] * 100:.1f}% SL_loss={sl_frac * 100:.1f}% recent5={fmt_pct(recent5_pnl)}"
+    )
+    print(
+        f"- Recovery rule: last {SHORT0_STORM_RECOVERY_MIN_SLICES} batches x "
+        f"{SHORT0_STORM_RECOVERY_SLICE} need PF>={SHORT0_STORM_RECOVERY_MIN_PF:.2f}, "
+        f"PnL>={fmt_pct(SHORT0_STORM_RECOVERY_MIN_PNL)}, Win>={SHORT0_STORM_RECOVERY_MIN_WIN * 100:.0f}%, "
+        f"SL_loss<={SHORT0_STORM_RECOVERY_MAX_SL_FRAC * 100:.0f}% | {recovery_status}"
+    )
+
+
+def print_runtime_guardrail_status(df: pd.DataFrame, recent_minutes: int) -> None:
+    print("\nRuntime guardrails")
+    if HEARTBEAT_PATH.exists():
+        try:
+            heartbeat = json.loads(HEARTBEAT_PATH.read_text(encoding="utf-8"))
+            last_progress = pd.to_datetime(
+                heartbeat.get("last_progress_utc"), errors="coerce", utc=True
+            )
+            age_seconds = (
+                (pd.Timestamp.now(tz="UTC") - last_progress).total_seconds()
+                if pd.notna(last_progress)
+                else math.nan
+            )
+            print(
+                f"- Heartbeat={heartbeat.get('status', 'UNKNOWN')} "
+                f"cycle={heartbeat.get('cycle_id', '')} "
+                f"scan={heartbeat.get('scanned_symbols', 0)}/{heartbeat.get('expected_symbols', 0)} "
+                f"age={age_seconds:.0f}s pid={heartbeat.get('process_id', 0)} "
+                f"policy={heartbeat.get('policy_version', '')}"
+            )
+            print(
+                f"- Runtime cwd={heartbeat.get('working_directory', '')} "
+                f"ledger={heartbeat.get('ledger_path', '')}"
+            )
+            if heartbeat.get("last_error"):
+                print(f"- Heartbeat error={heartbeat['last_error']}")
+        except Exception as exc:
+            print(f"- Heartbeat unreadable: {exc}")
+    else:
+        print("- Heartbeat file absent; rerun the bot loop cell to activate HEARTBEAT_V1.")
+
+    if STOP_HIT_WFA_REPORT.exists():
+        try:
+            report = json.loads(STOP_HIT_WFA_REPORT.read_text(encoding="utf-8"))
+            summary = report.get("validation_summary", {})
+            print(
+                f"- Stop-hit WFA eligible={summary.get('deployment_eligible', False)} "
+                f"folds={summary.get('folds', 0)} OOS={summary.get('oos_rows', 0)} "
+                f"AUC={summary.get('auc', math.nan):.3f} "
+                f"Brier={summary.get('brier', math.nan):.3f} "
+                f"baseline={summary.get('baseline_brier', math.nan):.3f} "
+                f"reason={summary.get('reason', '')}"
+            )
+        except Exception as exc:
+            print(f"- Stop-hit WFA report unreadable: {exc}")
+    else:
+        print("- Stop-hit WFA report absent; run the final Model_Training_Lab cell.")
+
+    newest = df["_ts"].max()
+    recent = df
+    if pd.notna(newest):
+        recent = df[df["_ts"] >= newest - pd.Timedelta(minutes=recent_minutes)]
+    routed = recent[recent["_route"].fillna("").astype(str).str.len() > 0]
+    if routed.empty:
+        print("- Routed rows=0; new route columns begin after the next bot cycle.")
+        return
+    route_counts = routed["_route"].fillna("UNKNOWN").astype(str).value_counts()
+    decision_counts = routed["_route_decision"].fillna("UNKNOWN").astype(str).value_counts()
+    print(f"- Routed rows={len(routed)} | eligible-score rows={int(routed['_stop_hit_eligible_bool'].sum())}")
+    print("- Routes: " + ", ".join(f"{key}={value}" for key, value in route_counts.items()))
+    print("- Decisions: " + ", ".join(f"{key}={value}" for key, value in decision_counts.head(8).items()))
+
+
+def run_audit(ledger_path: str, recent_minutes: int, executable_only: bool = False) -> None:
     path = Path(ledger_path)
     if not path.exists():
         raise FileNotFoundError(path)
 
     df = normalize(read_csv_with_retry(path))
+    original_rows = len(df)
+    if executable_only:
+        df = df[df["_actionable_bool"]].copy()
     newest = df["_ts"].max()
     oldest = df["_ts"].min()
     print(f"\nFast feedback audit: {path}")
     print(f"Rows={len(df)} | oldest={oldest} | newest={newest} | modified={time.ctime(path.stat().st_mtime)}")
+    if executable_only:
+        print(f"View=EXECUTABLE_ONLY | filtered_out={original_rows - len(df)} rejected/research/zero-size rows")
 
     live_count = int(df["_live_bool"].sum())
     rejected_count = int(df["_rejected_bool"].sum())
@@ -445,6 +855,7 @@ def run_audit(ledger_path: str, recent_minutes: int) -> None:
 
     print("\nExecution-layer health (profit proof)")
     print_execution_layer_health(df)
+    print_open_paper_trades(df)
 
     print("\nDiagnostic health")
     print_metrics("All closed incl rejected", df["_outcome"])
@@ -478,6 +889,10 @@ def run_audit(ledger_path: str, recent_minutes: int) -> None:
     print_root_cause_tables(df)
     print_discovery_candidates(df)
     print_recent_blockers(df, recent_minutes)
+    print_runtime_policy_guard(df)
+    print_canary_guard_audit(df, recent_minutes)
+    print_short0_storm_recovery_gate(df)
+    print_runtime_guardrail_status(df, recent_minutes)
 
     if df["_optimizer_bool"].sum() > 0:
         focus = df[df["_optimizer_bool"]].sort_values("_ts").tail(12)
@@ -516,8 +931,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Read-only fast feedback audit for Binance Analyst v4 ledger.")
     parser.add_argument("--ledger", default=DEFAULT_LEDGER, help="Path to shadow ledger CSV.")
     parser.add_argument("--recent-minutes", type=int, default=90, help="Recent window based on ledger timestamps.")
+    parser.add_argument("--executable-only", action="store_true", help="Only analyze PAPER_TRADE/TRADE_LIVE rows with size_usd > 0.")
     args = parser.parse_args()
-    run_audit(args.ledger, args.recent_minutes)
+    run_audit(args.ledger, args.recent_minutes, executable_only=args.executable_only)
 
 
 if __name__ == "__main__":

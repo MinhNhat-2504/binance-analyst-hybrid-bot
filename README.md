@@ -1,72 +1,58 @@
 # Binance Analyst
 
-Dự án phân tích và giao dịch đa tài sản trên Binance bằng ensemble ML models (XGBoost + Deep Learning + XGBoost gates). Bao gồm notebook huấn luyện, analysis dashboard, và logic bot thương mại.
+Bot giao dịch crypto trên Binance Futures. Repo này đổi hướng giữa chừng, và cái tên "hybrid bot" giờ chỉ còn đúng một nửa — kể lại cho ai mới vào đỡ bỡ ngỡ:
 
-## ⚡ Bắt đầu nhanh
+Ban đầu đây là bot scalping khung 15 phút, chạy cả cụm XGBoost + LSTM + gating network, backtest ra profit factor 2.2–2.7 nhìn rất sướng mắt. Nhưng chạy thật thì mãi không có lãi. Sau khi dựng lại hệ thống đo lường tử tế (walk-forward có purge theo thời gian thật, so với permutation null, tính đủ phí) thì vỡ lẽ: mấy con số đẹp kia là do leakage trong pipeline huấn luyện, còn tín hiệu thật chỉ đáng ~5bps trong khi phí round-trip đã 12-13bps. Tức là chưa đánh đã thua. Chi tiết vụ "khám nghiệm tử thi" này nằm trong [HONEST_FINDINGS.md](HONEST_FINDINGS.md) — nếu chỉ đọc một file trong repo thì đọc file đó.
 
-1. **Clone repo** và tạo file `.env`:
-   ```
-   BINANCE_API_KEY=your_key_here
-   BINANCE_API_SECRET=your_secret_here
-   ```
+Hướng đi hiện tại đơn giản hơn nhiều: **funding carry khung ngày (CARRY-7d)**. Xếp hạng ~40 đồng theo tổng funding rate 7 ngày, short nhóm funding cao nhất (phe long đang chen chúc và phải trả phí), long nhóm funding thấp nhất, cân lại danh mục mỗi ngày. Không train model nào cả. Đây là chiến lược đầu tiên của repo qua được toàn bộ khâu kiểm: backtest 600 ngày Sharpe ~1.8, giữ nguyên trên universe hold-out gồm 33 đồng hoàn toàn khác, sống sót khi nhân đôi phí, không dựa vào một symbol hay vài ngày may mắn nào (ngày trung vị dương, không đồng nào chiếm quá 15% lợi nhuận).
 
-2. **Cài dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Trạng thái hiện tại (08/2026)
 
-3. **Chạy notebook chính**:
-   - `binance-analyst.ipynb` - Bot runtime & analysis (chạy end-to-end)
-   - `Model_Training_Lab.ipynb` - Huấn luyện mô hình từ dữ liệu mới
+Đang **paper trade**, bắt đầu từ 03/08/2026. Live đang tắt hoàn toàn (`live_enabled=false`, vốn cấp = 0).
 
-## 📚 Notebook & Script
+Điều kiện để cân nhắc bật live được ghi sẵn trong `carry_paper_config_v1.json`: tối thiểu 60 ngày paper (mục tiêu 90), Sharpe > 0.5, tổng lãi dương, drawdown không quá -20%. File config này bị khóa bằng hash — executor từ chối chạy nếu file bị sửa. Nghe hơi cực đoan nhưng lý do đơn giản: record 60 ngày của một rule bị chỉnh giữa chừng thì chẳng chứng minh được gì, và tune-giữa-chừng chính là cách repo này từng tự lừa mình.
 
-| File | Mục đích |
-|------|---------|
-| [binance-analyst.ipynb](binance-analyst.ipynb) | Bot runtime, load models, giao dịch & tracking |
-| [Model_Training_Lab.ipynb](Model_Training_Lab.ipynb) | Huấn luyện XGBoost, LSTM, gates từ OHLCV data |
-| [train_lstm.ipynb](train_lstm.ipynb) | Thử nghiệm mô hình LSTM sequence |
-| [Dashboard_Analytics.ipynb](Dashboard_Analytics.ipynb) | Phân tích outcome ledger, PnL breakdown |
-| [analysis.py](analysis.py) | Utility analysis functions |
-| [deep_root_cause_audit.py](deep_root_cause_audit.py) | Deep dive vào root cause losses |
-| [fast_feedback_audit.py](fast_feedback_audit.py) | Quick diagnostics |
+## Chạy
 
-## 🎯 Artifacts (git ignored)
+Cài đặt gọn (không cần tensorflow như bản cũ):
 
-Files sau được ignore vì kích thước lớn hoặc data động:
-- **Models**: `*.keras`, `*.pkl` (LSTM, XGBoost, gates)
-- **Config**: `model_calibrations.json`, `optimized_gates_v1.json`, `feature_drift_baseline.json`, `toxic_zones_blacklist.json`
-- **Runtime state**: `bot_runtime_state_dual.json`, `shadow_ledger_*.csv`
-- **API keys**: `.env` file
-
-Để chạy, bạn cần **regenerate models** bằng cách chạy `Model_Training_Lab.ipynb` trên dữ liệu mới.
-
-## ⚙️ Workflow
-
-```
-1. Chuẩn bị dữ liệu (fetch từ Binance hoặc CSV)
-   ↓
-2. Chạy Model_Training_Lab → generate models
-   ↓
-3. Chạy binance-analyst.ipynb → load models, test bot logic
-   ↓
-4. Phân tích outcome với Dashboard_Analytics.ipynb
-```
-
-## ⚠️ Lưu ý
-
-- **TRADE_LIVE=False** được khuyến khích cho test ban đầu. Chỉ bật khi confident vào logic.
-- Mô hình XGBoost/gates được huấn luyện trên dữ liệu lịch sử; thường xuyên retrain trên dữ liệu mới.
-- Cost (fee Binance ~18 bps round-trip) đã include trong model calibration.
-- Gating network phải tuning phù hợp để tránh overfitting.
-
-## 📦 Dependencies
-
-Xem [requirements.txt](requirements.txt) hoặc cài:
 ```bash
-pip install numpy pandas scikit-learn xgboost tensorflow keras joblib python-binance python-dotenv feedparser
+pip install numpy pandas scipy scikit-learn xgboost pyarrow
 ```
 
-## 📄 Disclaimer
+Không cần API key — mọi thứ dùng public endpoint của Binance (klines + funding rate).
 
-Dự án chỉ phục vụ mục đích **nghiên cứu & giáo dục**. Giao dịch crypto có **rủi ro cao**; bạn chịu trách nhiệm khoản lỗi khi deploy live.
+```bash
+# Đo lại xem tín hiệu 15m cũ có edge không (spoiler: không)
+python run_honest_harness.py --quick
+
+# Lab chiến lược khung ngày: momentum / trend / carry, mỗi cái so với null riêng
+python run_daily_lab.py
+
+# Kiểm tra hold-out của carry trên universe tách biệt
+python run_carry_holdout.py
+
+# Paper trading hằng ngày (chạy trễ hay quên vài ngày cũng được, nó tự bù)
+python run_carry_paper.py
+python run_carry_paper.py --status   # xem đang ở ngày bao nhiêu, lãi lỗ ra sao
+```
+
+## Cấu trúc
+
+- `honest/` — bộ đo lường: fetch data có cache, feature sạch (chặn cột không dừng), triple-barrier label tính đủ phí, purged walk-forward, permutation null, mô phỏng khớp lệnh maker/taker, và lab chiến lược khung ngày. Đây là phần đáng giá nhất của repo; muốn thử ý tưởng gì thì bắt nó chạy qua đây trước khi tin.
+- `run_daily_lab.py` / `run_carry_holdout.py` — grid chiến lược daily đã đăng ký trước + kiểm hold-out.
+- `run_carry_paper.py` + `carry_paper_config_v1.json` — executor paper trading, fill tại open ngày kế tiếp, có khóa chống tune.
+- `run_clean_oos.py` — pipeline OOS độc lập (một nhánh kiểm tra song song, kết luận tương tự).
+- `binance-analyst.ipynb`, `Model_Training_Lab.ipynb` — bot 15m cũ và notebook train. Giữ lại để tham khảo, **đừng tin số trong đó** — xem HONEST_FINDINGS.md để biết vì sao.
+
+## Bài học rút ra (tóm tắt cho đỡ đọc file dài)
+
+1. Backtest đẹp mà không có permutation null đối chứng thì chưa nói lên điều gì.
+2. Purge theo số dòng trên dataframe nhiều symbol xen kẽ là sai đơn vị — phải purge theo thời gian thật.
+3. Phí 13bps nghe nhỏ nhưng giết chết mọi tín hiệu yếu ở khung 15 phút.
+4. Sàn trả nến "ma" cho coin đã delist (giá đứng im, volume 0) — không lọc là backtest tự bịa lãi.
+5. Kiểm tra độ tập trung lợi nhuận theo symbol và theo ngày trước khi tin bất kỳ Sharpe nào.
+
+## Lưu ý
+
+Repo phục vụ nghiên cứu và học tập. Crypto rủi ro cao, funding carry vẫn có thể sập khi thị trường squeeze — tự chịu trách nhiệm nếu bật live.
