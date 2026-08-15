@@ -29,6 +29,20 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _open_panel(symbols: list[str], days: int) -> pd.DataFrame:
+    """Open-price panel; mirrors run_carry_paper.build_opens (fills happen at next-day open)."""
+    opens = {}
+    for sym in symbols:
+        try:
+            k = fetch_klines(sym, "1d", days, use_cache=False)
+            idx = pd.to_datetime(k["Open time"]).dt.normalize()
+            ser = k.set_index(idx)["Open"]
+            opens[sym] = ser[~ser.index.duplicated(keep="last")]
+        except Exception:
+            pass
+    return pd.DataFrame(opens).sort_index()
+
+
 def _decision_close_references(symbols: list[str], day: pd.Timestamp) -> dict[str, float]:
     """Causal, independent price references from the signal day's settled close."""
     references: dict[str, float] = {}
@@ -59,14 +73,46 @@ def main() -> int:
             raise RuntimeError("paper config hash differs from active paper state; refusing target export")
 
     if not args.rebuild_from_public_data:
+        # Default: the SAME rule the paper bot runs, applied to the LATEST completed signal
+        # day. The paper ledger books day t only once day t+1's open exists (two mornings
+        # later), but the executor needs day t's weights on the morning of t+1 - so we do
+        # not read the booked weights, we recompute them with the paper bot's own
+        # target_weights() on fresh data with the same tradability mask. When the paper
+        # state has already booked this day, the two MUST agree; that cross-check is what
+        # keeps this from being a second, driftable implementation.
         if not STATE.exists():
             raise RuntimeError("frozen paper state is required for default target export")
-        day = pd.Timestamp(args.signal_day or state.get("last_signal_day")).normalize()
-        if args.signal_day and day.date().isoformat() != str(state.get("last_signal_day")):
-            raise RuntimeError("default export only permits the exact locked paper signal day")
-        weights = pd.Series(state.get("weights", {}), dtype=float)
-        references = _decision_close_references(list(weights.index), day)
-        source = "frozen carry_paper_state.json weights; independent settled signal-day close references"
+        days_back = max(60, int(cfg["funding_lookback_days"]) + 30)
+        px, fday = build_panel(cfg["universe"], days=days_back, min_days=10, use_cache=False, verbose=False)
+        opens = _open_panel(cfg["universe"], days_back).reindex(columns=px.columns)
+        latest = pd.Timestamp(px.index.max()).normalize()
+        day = pd.Timestamp(args.signal_day).normalize() if args.signal_day else latest
+        if day not in fday.index or day not in px.index:
+            raise RuntimeError(f"signal day {day.date()} is unavailable in the funding/price panel")
+        fill_day = day + pd.Timedelta(days=1)
+        weights = target_weights(fday, day, int(cfg["funding_lookback_days"]), float(cfg["quantile"]))
+        # Same mask as run_carry_paper.py: a symbol is tradeable only if it printed a close
+        # on the signal day and has an open on the fill day (or the fill day is today and
+        # not yet printed - then require the signal-day close only).
+        tradeable = px.loc[day].notna()
+        if fill_day in opens.index:
+            tradeable &= opens.loc[fill_day].notna()
+        weights = weights.where(tradeable, 0.0)
+        booked_day = str(state.get("last_signal_day", ""))
+        if booked_day == day.date().isoformat():
+            booked = pd.Series(state.get("weights", {}), dtype=float).reindex(weights.index).fillna(0.0)
+            diff = (booked - weights).abs().max()
+            if diff > 1e-6:
+                raise RuntimeError(
+                    f"recomputed weights for {day.date()} differ from the booked paper state "
+                    f"(max |diff| {diff:.6f}); refusing to export a target that disagrees with the paper record"
+                )
+        references = {s: float(px.loc[day, s]) for s in weights.index if weights[s] != 0 and pd.notna(px.loc[day, s])}
+        missing = sorted(s for s in weights.index if weights[s] != 0 and s not in references)
+        if missing:
+            raise RuntimeError(f"missing signal-close reference prices: {missing}")
+        source = (f"paper rule recomputed for latest signal day {day.date()} "
+                  f"({'cross-checked against booked paper state' if booked_day == day.date().isoformat() else 'paper state not yet booked for this day'})")
     else:
         days_back = max(60, int(cfg["funding_lookback_days"]) + 30)
         px, fday = build_panel(cfg["universe"], days=days_back, min_days=10, use_cache=True, verbose=False)

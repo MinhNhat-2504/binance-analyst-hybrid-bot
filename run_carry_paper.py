@@ -186,11 +186,17 @@ def main() -> int:
         header = not LEDGER_PATH.exists()
         df.to_csv(LEDGER_PATH, mode="a", header=header, index=False, encoding="utf-8")
 
-    if todo:
+    if rows:
+        # last_signal_day must be the last day actually BOOKED, not the last day attempted.
+        # The loop breaks on the first day whose exit open does not exist yet; recording
+        # todo[-1] there labelled a day as done that was never written, so it was skipped
+        # forever on the next run and state.weights (still the previous day's) carried the
+        # wrong date. Book-keeping only: the rule and every booked number are unchanged.
+        booked_last = pd.Timestamp(rows[-1]["signal_day"])
         state.update({
             "config_sha256": cfg_hash,
             "started_utc": state.get("started_utc", datetime.now(timezone.utc).isoformat(timespec="seconds")),
-            "last_signal_day": str(todo[-1].date()),
+            "last_signal_day": str(booked_last.date()),
             "weights": {k: round(v, 6) for k, v in prev_w.items() if v != 0.0},
             "equity": equity,
         })
@@ -213,7 +219,7 @@ def main() -> int:
     print("=" * 70)
     print(f"CARRY-7d PAPER  day {n}/{gate['min_paper_days']} (target {gate['recommended_paper_days']})")
     print("=" * 70)
-    print(f"  processed {len(todo)} new day(s) this run")
+    print(f"  booked {len(rows)} new day(s) this run ({len(todo) - len(rows)} pending next open)")
     print(f"  equity {eq.iloc[-1]:.4f}  total {(eq.iloc[-1] - 1) * 100:+.2f}%  "
           f"sharpe-to-date {sharpe:+.2f}  maxDD {dd:.1f}%")
     print(f"  gate: >= {gate['min_paper_days']}d AND sharpe > {gate['paper_sharpe_min']} AND "
