@@ -149,14 +149,15 @@ def main() -> int:
         # PnL attributed to fill_day: open(fill_day) -> next known open (or latest close
         # for the still-running day). Funding: 08:00/16:00 of fill_day to the NEW weights,
         # 00:00 of fill_day to the OLD weights (conservative boundary rule).
+        # Only book a day once its exit price (next day's open) exists. A partial
+        # open-to-close mark was previously written to the ledger and never revised,
+        # leaving a permanent overnight-gap error on every catch-up boundary. The
+        # still-running day is now displayed but not persisted; it books tomorrow.
         nxt = fill_day + pd.Timedelta(days=1)
-        if nxt in opens.index:
-            ret = (opens.loc[nxt] / opens.loc[fill_day] - 1).fillna(0.0)
-            mark = "open_to_open"
-        else:
-            ret = (px.loc[fill_day] / opens.loc[fill_day] - 1).fillna(0.0) \
-                if fill_day in px.index else pd.Series(0.0, index=px.columns)
-            mark = "open_to_close_partial"
+        if nxt not in opens.index:
+            break
+        ret = (opens.loc[nxt] / opens.loc[fill_day] - 1).fillna(0.0)
+        mark = "open_to_open"
 
         f_day = fday.loc[fill_day].fillna(0.0) if fill_day in fday.index else pd.Series(0.0, index=px.columns)
         # Approximation note: fday aggregates the whole day; the 00:00 slice is ~1/3.
