@@ -1,0 +1,13 @@
+{
+  "version": "EXECUTION_CEILINGS_V1",
+  "declared_utc": "2026-08-15",
+  "purpose": "Per-environment hard caps on gross notional the executor may ever run. Frozen by sha256 into every execution contract; the CLI may only LOWER a budget below these, never raise. Changing this file changes every future contract hash and is a reviewed event, not a runtime knob.",
+  "ceilings_usd": {
+    "testnet": 500.0,
+    "live": 0.0
+  },
+  "notes": [
+    "live is 0.0 on purpose: no live budget exists until the 60-day paper gate passes and this file is re-issued as v2 with an explicit, reviewed number.",
+    "The code keeps an ABSOLUTE upper bound above these values that no file can exceed (contracts.ABSOLUTE_GROSS_UPPER_BOUND_USD). Two locks: the file for the reviewed number, the code for the sanity limit."
+  ]
+}

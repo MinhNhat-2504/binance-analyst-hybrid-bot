@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .binance_futures import BinanceAPIError, FuturesREST
-from .contracts import FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
+from .contracts import CEILINGS_SHA256, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
 from .targets import TargetBook
 
 
@@ -153,6 +153,16 @@ class TargetMismatchError(RuntimeError):
     """Orders returned, but the independently observed account missed the target."""
 
 
+class AuditWriteError(RuntimeError):
+    """The audit store rejected a write after orders were live.
+
+    A sqlite hiccup is an operational fault: the book on the exchange is exactly as
+    correct (or not) as it was a millisecond earlier. Liquidating it because we could not
+    RECORD it is the wrong trade. Handled as a halt; and since the audit is the broken
+    part, the handler falls back to a plain-text sidecar so the state is never lost.
+    """
+
+
 class HaltedError(RuntimeError):
     """Stop issuing orders; cancel resting orders; leave positions; hand to a human.
 
@@ -250,6 +260,10 @@ class ExecutionAudit:
         ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE execution_legs ADD COLUMN {name} {typ}")
+
+    def sidecar_path(self) -> Path:
+        """Plain-text fallback next to the DB for terminal states the DB could not take."""
+        return Path(str(self.path) + ".sidecar.jsonl")
 
     def start(self, run_id: str, book: TargetBook, dry_run: bool) -> None:
         self.connection.execute("INSERT INTO execution_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (run_id, utc_now(), "", book.target_id, "testnet", int(dry_run), "RUNNING", ""))
@@ -588,6 +602,7 @@ class TestnetExecutor:
             "authorized_budget_usd": float(approval["authorized_budget_usd"]),
             "effective_gross_budget_usd": plan.gross_budget,
             "frozen_testnet_gross_ceiling_usd": FROZEN_TESTNET_GROSS_CEILING_USD,
+            "ceilings_file_sha256": CEILINGS_SHA256,
             "expected_positions": {symbol: str(quantity) for symbol, quantity in plan.expected_positions.items()},
             # The tolerance rule is part of the hashed contract.  Its min-notional
             # component is converted to quantity only once verification prices exist.
@@ -668,6 +683,23 @@ class TestnetExecutor:
                 raise
         self.client.set_leverage(symbol, self.policy.leverage)
 
+    def _write_sidecar(self, run_id: str, book: TargetBook, final_status: str,
+                       exc: BaseException, finish_exc: BaseException, orders_started: bool) -> None:
+        """Out-of-band terminal record for when the audit DB itself is unwritable."""
+        try:
+            held = self.client.positions()
+        except BaseException as pos_exc:
+            held = [{"snapshot_error": str(pos_exc)}]
+        record = {
+            "run_id": run_id, "target_id": book.target_id, "final_status": final_status,
+            "orders_started": orders_started, "error": f"{type(exc).__name__}: {exc}",
+            "audit_finish_error": f"{type(finish_exc).__name__}: {finish_exc}",
+            "positions_held": held, "written_utc": utc_now(),
+        }
+        sidecar = self.audit.sidecar_path()
+        with open(sidecar, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, default=str) + "\n")
+
     def _cancel_only(self, run_id: str, symbols: set[str], reason: str) -> bool:
         """Cancel known and globally visible orders without changing any position."""
 
@@ -675,7 +707,10 @@ class TestnetExecutor:
             pending_before = self.client.open_orders()
         except BaseException as exc:
             pending_before = []
-            self.audit.positions(run_id, "cancel_only_snapshot_failed", {"error": str(exc)})
+            try:
+                self.audit.positions(run_id, "cancel_only_snapshot_failed", {"error": str(exc)})
+            except BaseException:
+                pass
         pending_symbols = {
             str(row.get("symbol", "")).upper()
             for row in pending_before if str(row.get("symbol", "")).strip()
@@ -699,13 +734,19 @@ class TestnetExecutor:
             held = self.client.positions()
         except BaseException as exc:
             held = [{"snapshot_error": str(exc)}]
-        self.audit.positions(run_id, "cancel_only_positions", held)
-        self.audit.positions(run_id, "cancel_only_summary", {
-            "reason": reason, "known_symbols": sorted(symbols),
-            "open_orders_before": pending_before, "open_orders_after": pending_after,
-            "cancel_failures": failures, "verified": verified,
-            "positions_held": held,
-        })
+        # `verified` reflects the EXCHANGE (orders gone or not). Failing to WRITE that fact
+        # to the audit must not be reported as a failed cancel - the two are different
+        # facts, and this method is also called precisely when the audit is broken.
+        try:
+            self.audit.positions(run_id, "cancel_only_positions", held)
+            self.audit.positions(run_id, "cancel_only_summary", {
+                "reason": reason, "known_symbols": sorted(symbols),
+                "open_orders_before": pending_before, "open_orders_after": pending_after,
+                "cancel_failures": failures, "verified": verified,
+                "positions_held": held,
+            })
+        except BaseException:
+            pass  # sidecar in execute()'s handler carries the held book when the DB is down
         return verified
 
     def _flatten_all(self, run_id: str, reason: str, target_symbols: set[str]) -> bool:
@@ -877,7 +918,12 @@ class TestnetExecutor:
                     prepared_client_order_id=client_order_id,
                 )
                 status = str(response.get("status", "UNKNOWN"))
-                self.audit.leg(run_id, index, leg, status, response, client_order_id=client_order_id)
+                try:
+                    self.audit.leg(run_id, index, leg, status, response, client_order_id=client_order_id)
+                except BaseException as audit_exc:
+                    raise AuditWriteError(
+                        f"audit rejected leg row {index} ({leg.symbol}, order status {status}): {audit_exc}"
+                    ) from audit_exc
                 if status != "FILLED":
                     raise RuntimeError(f"{leg.symbol} {leg.reason} did not fill: {status}")
                 slippage = self._adverse_slippage_bps(leg, response)
@@ -893,10 +939,16 @@ class TestnetExecutor:
                 after_positions = self.client.positions()
             except BaseException as exc:
                 raise VerificationUnavailableError(f"positionRisk verification unavailable: {exc}") from exc
-            self.audit.positions(run_id, "after_orders", after_positions)
+            try:
+                self.audit.positions(run_id, "after_orders", after_positions)
+            except BaseException as audit_exc:
+                raise AuditWriteError(f"audit rejected after_orders snapshot: {audit_exc}") from audit_exc
             positions_ok, verification = self._verify_execution_plan(plan, after_positions)
             verification["contract_sha256"] = contract["contract_sha256"]
-            self.audit.positions(run_id, "target_verification", verification)
+            try:
+                self.audit.positions(run_id, "target_verification", verification)
+            except BaseException as audit_exc:
+                raise AuditWriteError(f"audit rejected target_verification: {audit_exc}") from audit_exc
             if not positions_ok:
                 quantity_failed = {
                     str(row["symbol"]) for row in verification["rows"]
@@ -948,7 +1000,7 @@ class TestnetExecutor:
             if plan is not None:
                 surface_symbols.update(plan.expected_positions)
                 surface_symbols.update(plan.orphan_symbols)
-            if isinstance(exc, (ExternalPositionDriftError, HaltedError)):
+            if isinstance(exc, (ExternalPositionDriftError, HaltedError, AuditWriteError)):
                 try:
                     cancel_only_ok = self._cancel_only(run_id, surface_symbols, str(exc))
                 except BaseException as cleanup_exc:
@@ -966,7 +1018,9 @@ class TestnetExecutor:
                         self.audit.positions(run_id, "emergency_cleanup_crashed", {"error": str(cleanup_exc)})
                     except BaseException:
                         pass
-            if isinstance(exc, HaltedError):
+            if isinstance(exc, AuditWriteError):
+                final_status = "HALTED_AUDIT_UNAVAILABLE" if cancel_only_ok else "HALTED_CANCEL_FAILED"
+            elif isinstance(exc, HaltedError):
                 final_status = "HALTED_MID_BOOK" if cancel_only_ok else "HALTED_CANCEL_FAILED"
             elif isinstance(exc, ExternalPositionDriftError):
                 final_status = "EXTERNAL_POSITION_DRIFT" if cancel_only_ok else "EXTERNAL_DRIFT_CANCEL_FAILED"
@@ -982,6 +1036,12 @@ class TestnetExecutor:
                 final_status = "FAILED"
             try:
                 self.audit.finish(run_id, final_status, str(exc))
-            except BaseException:
-                pass
+            except BaseException as finish_exc:
+                # The audit store is the thing that failed. Do not let the terminal state
+                # vanish: write a plain-text sidecar next to the DB with everything a human
+                # needs to pick the book up. This is the last line, so it must not raise.
+                try:
+                    self._write_sidecar(run_id, book, final_status, exc, finish_exc, orders_started)
+                except BaseException:
+                    pass
             raise

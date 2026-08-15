@@ -9,7 +9,7 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
-from execution.contracts import FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
+from execution.contracts import CEILINGS_SHA256, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
 from execution.targets import load_target_book
 
 
@@ -163,6 +163,7 @@ def main() -> int:
             authorized_budget > 0
             and 0 < effective_budget <= authorized_budget <= frozen_ceiling
             and frozen_ceiling == FROZEN_TESTNET_GROSS_CEILING_USD
+            and contract.get("ceilings_file_sha256", CEILINGS_SHA256) == CEILINGS_SHA256
         )
     except (KeyError, TypeError, ValueError):
         authorization_ok = False

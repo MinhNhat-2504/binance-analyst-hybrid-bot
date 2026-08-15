@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import pytest
 
-from execution.engine import ExternalPositionDriftError, HaltedError, ExecutionAudit, ExecutionPolicy, KillSwitch, TargetMismatchError, TestnetExecutor
+from execution.engine import AuditWriteError, ExternalPositionDriftError, HaltedError, ExecutionAudit, ExecutionPolicy, KillSwitch, TargetMismatchError, TestnetExecutor
 from execution.binance_futures import BinanceAPIError, FuturesREST, LIVE_BASE_URL, TESTNET_BASE_URL
 from execution.targets import TargetBook, load_target_book
 from reconcile_paper_vs_testnet import compare_contract_to_positions, contract_sha256, select_execution_run
@@ -846,6 +846,27 @@ def test_budget_typo_is_rejected_before_plan_or_order(tmp_path) -> None:
     assert client.synced == 0 and client.orders == 0
 
 
+def test_ceilings_file_cannot_raise_above_code_bound_and_live_defaults_to_zero(tmp_path) -> None:
+    """Two locks: the JSON holds the reviewed number, the code holds an absolute sanity
+    bound the JSON cannot exceed. And live is 0.0 until a v2 file is issued on purpose."""
+    from execution.contracts import ABSOLUTE_GROSS_UPPER_BOUND_USD, frozen_ceiling, load_ceilings
+    # Shipped file: testnet 500, live 0, both under the bound.
+    ceilings, sha = load_ceilings()
+    assert ceilings["testnet"] == 500.0 and ceilings["live"] == 0.0
+    assert len(sha) == 64
+    assert frozen_ceiling("live") == 0.0
+    # A file that tries to authorise more than the code bound is refused at load.
+    bad = tmp_path / "ceilings.json"
+    bad.write_text(json.dumps({"ceilings_usd": {"testnet": ABSOLUTE_GROSS_UPPER_BOUND_USD * 10, "live": 0.0}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="outside"):
+        load_ceilings(bad)
+    # An environment the file does not declare has no ceiling -> refuse, do not default.
+    partial = tmp_path / "partial.json"
+    partial.write_text(json.dumps({"ceilings_usd": {"testnet": 100.0}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="no ceiling declared"):
+        frozen_ceiling("live", partial)
+
+
 def test_frozen_testnet_ceiling_cannot_be_self_authorized_higher() -> None:
     with pytest.raises(ValueError, match="frozen testnet ceiling"):
         ExecutionPolicy(max_gross_notional_usd=50_000)
@@ -998,6 +1019,65 @@ def test_slippage_is_measured_against_submit_time_requote_not_plan_mark(tmp_path
     # ... so AAA BUY at 101.2 is ~20bps adverse (not ~120), BBB SELL at 100.8 is ~20bps adverse.
     assert 15 < by_symbol["AAAUSDT"][1] < 25
     assert 15 < by_symbol["BBBUSDT"][1] < 25
+
+
+def test_audit_write_failure_after_orders_halts_keeps_book_and_writes_sidecar(tmp_path) -> None:
+    """Leg 1 fills, then sqlite refuses the leg row. Round-8 flattened here - liquidating a
+    book over a database error. Now: HALT, cancel-only, positions intact, and because the
+    audit is the thing that broke, the terminal state lands in a plain-text sidecar so a
+    human can still see what is held."""
+    class FlakyAudit(ExecutionAudit):
+        def __init__(self, path):
+            super().__init__(path)
+            self.leg_writes = 0
+            self.broken = False
+
+        def leg(self, run_id, sequence, leg, status, response=None, *, client_order_id=""):
+            if status == "FILLED":
+                self.leg_writes += 1
+                if self.leg_writes == 1:
+                    self.broken = True
+            if self.broken:
+                raise sqlite3.OperationalError("database is locked")
+            return super().leg(run_id, sequence, leg, status, response, client_order_id=client_order_id)
+
+        def positions(self, run_id, phase, payload):
+            if self.broken:
+                raise sqlite3.OperationalError("database is locked")
+            return super().positions(run_id, phase, payload)
+
+        def finish(self, run_id, status, message):
+            if self.broken:
+                raise sqlite3.OperationalError("database is locked")
+            return super().finish(run_id, status, message)
+
+    class CancelTrackingClient(TrackingClient):
+        def __init__(self):
+            super().__init__({})
+            self.cancelled = []
+
+        def cancel_all(self, symbol):
+            self.cancelled.append(symbol)
+            return {}
+
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "audit-flaky", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100.0, "BBBUSDT": 100.0}, "unit-test")
+    client, kill = CancelTrackingClient(), KillSwitch(tmp_path / "kill.json")
+    _release(kill, book)
+    audit = FlakyAudit(tmp_path / "audit.sqlite3")
+    with pytest.raises(AuditWriteError, match="audit rejected leg row"):
+        TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now).execute(book, dry_run=False)
+    # First leg's fill survives; no reduce-only flatten was sent.
+    assert client.inventory == {"AAAUSDT": Decimal("0.5")}
+    assert not any(o.get("reduceOnly") == "true" for o in client.orders)
+    assert set(client.cancelled) >= {"AAAUSDT", "BBBUSDT"}
+    # The DB could not take the terminal row, so the sidecar has it - with the held book.
+    sidecar = audit.sidecar_path()
+    assert sidecar.exists()
+    record = json.loads(sidecar.read_text(encoding="utf-8").strip().splitlines()[-1])
+    assert record["final_status"] == "HALTED_AUDIT_UNAVAILABLE"
+    assert record["target_id"] == "audit-flaky"
+    assert any(p.get("symbol") == "AAAUSDT" for p in record["positions_held"])
 
 
 def test_frozen_reference_drift_aborts_before_orders_or_cancellation(tmp_path) -> None:
