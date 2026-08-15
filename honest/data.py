@@ -22,7 +22,7 @@ KLINE_COLS = [
 NUMERIC_COLS = ["Open", "High", "Low", "Close", "Volume", "Taker Buy Base", "Taker Buy Quote", "Trades"]
 
 _MS_PER_MIN = 60_000
-INTERVAL_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
+INTERVAL_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "8h": 480, "1d": 1440}
 
 
 def _get(url: str, retries: int = 5) -> list:

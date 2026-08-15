@@ -1,0 +1,32 @@
+{
+  "version": "EIGHT_HOUR_CARRY_OOS_V1",
+  "declared_utc": "2026-08-15T00:00:00Z",
+  "purpose": "A new independently evaluated 8-hour CARRY-7d cell. It does not alter the locked daily paper route.",
+  "signal": "cross-sectional rank of settled trailing 7-day funding sum known strictly before each completed 8h decision; long bottom 20%, short top 20%. The settlement at the next entry timestamp is deliberately excluded from the signal because it was not known at decision time.",
+  "execution": {
+    "decision": "completed 8h bar close",
+    "entry": "next 8h open",
+    "holding": "one 8h bar",
+    "base_cost_bps_per_leg": 10,
+    "stress_cost_bps_per_leg": 20,
+    "latency_stress": "second-next 8h open",
+    "funding_accounting": "position funding is summed over (entry_time, exit_time], so the exit-boundary 8h settlement is earned"
+  },
+  "data_normalization": {
+    "funding_timestamp_grid": "timestamps within +/-1 second of an 8h UTC boundary are snapped to the nearest boundary",
+    "bar_gap_rule": "drop the affected symbol arm entirely; never row-shift across a cadence gap",
+    "zombie_rule": "positive base and quote volume plus a funding settlement no older than 8h"
+  },
+  "eligibility": {
+    "minimum_history_bars": 21,
+    "minimum_settled_funding_observations_in_7d": 18,
+    "minimum_holding_interval_funding_observations": 1,
+    "minimum_cross_section_symbols": 10
+  },
+  "universe": "fixed discovery-42 and disjoint symbol-holdout-33 from clean_oos_protocol_v1.json",
+  "temporal_cutoff_entry_utc": "2026-04-03T00:00:00Z",
+  "statistics": {"periods_per_year": 1095, "hac_lag_bars": 21, "joint_circular_outcome_shifts": "all unique eligible shifts, capped at 999; report actual permutation_n per cell", "minimum_shift_bars": 42},
+  "headline": "base next-8h-open, 10bps-per-leg, double-holdout replay is printed first; compare against a daily CARRY-7d arm rebuilt on the same symbols, funding snapshot, cutoff and cost assumptions",
+  "no_tune_rule": "Exactly this one 8h cell is evaluated. No rebalance frequency, quantile, lookback, universe, or cost variant may be selected after observing its result.",
+  "promotion": "A result can only nominate a separate future paper-v2 experiment; it cannot replace or tune the current daily paper experiment."
+}
