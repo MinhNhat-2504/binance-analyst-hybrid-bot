@@ -8,15 +8,17 @@ import json
 import math
 import os
 import sqlite3
+import statistics
 import time
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import field, asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any, Callable
 
 from .binance_futures import BinanceAPIError, FuturesREST
+from .contracts import FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
 from .targets import TargetBook
 
 
@@ -44,6 +46,20 @@ class ExecutionPolicy:
     order_poll_attempts: int = 5
     kill_switch_release_ttl_seconds: int = 15 * 60
     max_fill_slippage_bps: float = 50.0
+    # Reference-drift gate. The paper reference is the signal-day close, legitimately hours
+    # old by execution time. Measured on the live 17-symbol book over 200 days (round-7
+    # review): median worst-symbol drift at +8h is ~440bps and even at +15min ~80bps, so a
+    # 50bps per-symbol trip made P(run proceeds) = 0.000. This is a "the file is from a
+    # different world" tripwire, not a slippage control - slippage has its own gate. Two
+    # thresholds: the portfolio MEDIAN must stay tight (a broad regime move), and any single
+    # symbol may drift further before it alone vetoes the whole rebalance.
+    max_reference_drift_bps: float = 300.0
+    max_median_reference_drift_bps: float = 150.0
+    # Per-symbol quantity tolerance budget, hashed into the contract. Half a lot step, and
+    # 1% of the exchange minimum notional expressed in quantity. Owned here so they are
+    # reviewable at policy level rather than buried as literals in build_plan.
+    tolerance_rounding_steps: float = 0.5
+    tolerance_min_notional_fraction: float = 0.01
     expected_config_sha256: str = ""
     order_style: str = "MARKET"
     limit_buffer_bps: float = 3.0
@@ -54,6 +70,11 @@ class ExecutionPolicy:
             raise ValueError("this executor is testnet-only; production is intentionally blocked")
         if self.max_gross_notional_usd <= 0 or self.max_order_notional_usd <= 0:
             raise ValueError("notional limits must be positive")
+        if self.max_gross_notional_usd > FROZEN_TESTNET_GROSS_CEILING_USD:
+            raise ValueError(
+                f"max_gross_notional_usd exceeds frozen testnet ceiling "
+                f"${FROZEN_TESTNET_GROSS_CEILING_USD:.2f}"
+            )
         if self.max_positions < 1 or self.max_orders < 1:
             raise ValueError("position/order limits must be positive")
         if self.max_target_age_seconds < 1 or self.max_target_future_seconds < 0:
@@ -72,6 +93,12 @@ class ExecutionPolicy:
             raise ValueError("kill switch release TTL must be positive")
         if self.max_fill_slippage_bps < 0:
             raise ValueError("max fill slippage cannot be negative")
+        if self.max_median_reference_drift_bps < 0 or self.max_median_reference_drift_bps > self.max_reference_drift_bps:
+            raise ValueError("max_median_reference_drift_bps must be in [0, max_reference_drift_bps]")
+        if self.tolerance_rounding_steps < 0 or not (0 <= self.tolerance_min_notional_fraction <= 1):
+            raise ValueError("tolerance budget constants out of range")
+        if self.max_reference_drift_bps < 0:
+            raise ValueError("max reference drift cannot be negative")
         if self.expected_config_sha256 and (
             len(self.expected_config_sha256) != 64
             or any(char not in "0123456789abcdef" for char in self.expected_config_sha256.lower())
@@ -101,6 +128,7 @@ class PlanLeg:
     desired_quantity: Decimal
     current_quantity: Decimal
     target_weight: float
+    execution_reference_price: float = 0.0
 
 
 @dataclass
@@ -111,12 +139,10 @@ class ExecutionPlan:
     tolerance_budgets: dict[str, dict[str, str]]
     gross_budget: float
     orphan_symbols: list[str]
-
-    def __iter__(self):
-        # Keep the existing direct plan-inspection API ergonomic while exposing the
-        # authoritative post-trade vector to execution and reconciliation.
-        yield self.legs
-        yield self.skips
+    # The exact positionRisk rows this plan was computed from. execute() audits THIS as
+    # before_orders instead of taking a second, independent read that could differ.
+    position_snapshot: list[dict[str, Any]] = field(default_factory=list)
+    reference_drift_bps: dict[str, float] = field(default_factory=dict)
 
 
 class VerificationUnavailableError(RuntimeError):
@@ -125,6 +151,22 @@ class VerificationUnavailableError(RuntimeError):
 
 class TargetMismatchError(RuntimeError):
     """Orders returned, but the independently observed account missed the target."""
+
+
+class HaltedError(RuntimeError):
+    """Stop issuing orders; cancel resting orders; leave positions; hand to a human.
+
+    Reserved for anomalies that say nothing about whether the positions on the exchange
+    are WRONG: a kill-switch release that timed out mid-book, market data that went away
+    before a leg was submitted, a stray order appearing on an unrelated symbol. Every one of
+    these used to inherit the nearest handler's action - full market flatten - which is the
+    most expensive response available and the wrong one for a book that is, as far as
+    anyone can tell, correct. Flatten is now reserved for a confirmed position error.
+    """
+
+
+class ExternalPositionDriftError(RuntimeError):
+    """A no-order/safe-noop symbol changed outside this execution run."""
 
 
 class KillSwitch:
@@ -192,7 +234,8 @@ class ExecutionAudit:
             run_id TEXT, sequence INTEGER, symbol TEXT, side TEXT, quantity TEXT,
             reduce_only INTEGER, reference_price REAL, reason TEXT, status TEXT,
             order_id TEXT, avg_fill_price REAL, fill_slippage_bps REAL, response_json TEXT,
-            client_order_id TEXT, desired_quantity TEXT, current_quantity TEXT, target_weight REAL)""")
+            client_order_id TEXT, desired_quantity TEXT, current_quantity TEXT, target_weight REAL,
+            execution_reference_price REAL)""")
         self.connection.execute("""CREATE TABLE IF NOT EXISTS position_snapshots (
             run_id TEXT, phase TEXT, captured_utc TEXT, positions_json TEXT)""")
         self._migrate_legs()
@@ -200,7 +243,11 @@ class ExecutionAudit:
 
     def _migrate_legs(self) -> None:
         existing = {row[1] for row in self.connection.execute("PRAGMA table_info(execution_legs)")}
-        for name, typ in (("client_order_id", "TEXT"), ("desired_quantity", "TEXT"), ("current_quantity", "TEXT"), ("target_weight", "REAL")):
+        for name, typ in (
+            ("client_order_id", "TEXT"), ("desired_quantity", "TEXT"),
+            ("current_quantity", "TEXT"), ("target_weight", "REAL"),
+            ("execution_reference_price", "REAL"),
+        ):
             if name not in existing:
                 self.connection.execute(f"ALTER TABLE execution_legs ADD COLUMN {name} {typ}")
 
@@ -217,12 +264,12 @@ class ExecutionAudit:
             except (TypeError, ValueError):
                 pass
         slip = None
-        if avg_price and leg.reference_price > 0:
-            slip = (1.0 if leg.side == "BUY" else -1.0) * (avg_price / leg.reference_price - 1.0) * 10_000
+        if avg_price and leg.execution_reference_price > 0:
+            slip = (1.0 if leg.side == "BUY" else -1.0) * (avg_price / leg.execution_reference_price - 1.0) * 10_000
         self.connection.execute(
-            """INSERT INTO execution_legs (run_id,sequence,symbol,side,quantity,reduce_only,reference_price,reason,status,order_id,avg_fill_price,fill_slippage_bps,response_json,client_order_id,desired_quantity,current_quantity,target_weight)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (run_id, sequence, leg.symbol, leg.side, str(leg.quantity), int(leg.reduce_only), leg.reference_price, leg.reason, status, order_id, avg_price, slip, json.dumps(response or {}, default=str), client_order_id, str(leg.desired_quantity), str(leg.current_quantity), leg.target_weight),
+            """INSERT INTO execution_legs (run_id,sequence,symbol,side,quantity,reduce_only,reference_price,reason,status,order_id,avg_fill_price,fill_slippage_bps,response_json,client_order_id,desired_quantity,current_quantity,target_weight,execution_reference_price)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (run_id, sequence, leg.symbol, leg.side, str(leg.quantity), int(leg.reduce_only), leg.reference_price, leg.reason, status, order_id, avg_price, slip, json.dumps(response or {}, default=str), client_order_id, str(leg.desired_quantity), str(leg.current_quantity), leg.target_weight, leg.execution_reference_price),
         )
         self.connection.commit()
 
@@ -334,15 +381,20 @@ class TestnetExecutor:
         for chunk in chunks:
             if chunk < instrument.min_qty or (not reduce_only and chunk * _decimal(mark) < instrument.min_notional):
                 raise RuntimeError(f"{symbol}: order chunk is below exchange minimum")
-            legs.append(PlanLeg(symbol, side, chunk, reduce_only, reference, reason, desired, current, target_weight))
+            legs.append(PlanLeg(
+                symbol, side, chunk, reduce_only, reference, reason, desired, current,
+                target_weight, execution_reference_price=mark,
+            ))
 
     def build_plan(self, book: TargetBook, *, gross_budget: float | None = None) -> ExecutionPlan:
         self.client.sync_time()
         if self.client.position_mode():
             raise RuntimeError("dualSidePosition is enabled; one-way position mode is required")
         instruments = instruments_from_exchange_info(self.client.exchange_info())
-        positions = {str(row.get("symbol", "")).upper(): _decimal(row.get("positionAmt", 0)) for row in self.client.positions()}
+        position_snapshot = list(self.client.positions())
+        positions = {str(row.get("symbol", "")).upper(): _decimal(row.get("positionAmt", 0)) for row in position_snapshot}
         positions = {symbol: qty for symbol, qty in positions.items() if qty != 0}
+        drift_by_symbol: dict[str, float] = {}
         gross_budget = self._gross_budget() if gross_budget is None else float(gross_budget)
         active = {symbol: weight for symbol, weight in book.weights.items() if abs(weight) > 0}
         if len(active) > self.policy.max_positions:
@@ -361,11 +413,36 @@ class TestnetExecutor:
             tolerance_budgets[symbol] = {
                 "step_size": str(instrument.step_size), "min_qty": str(instrument.min_qty),
                 "min_notional": str(instrument.min_notional),
-                "rounding_steps": "0.5", "min_notional_fraction": "0.01",
+                "rounding_steps": str(self.policy.tolerance_rounding_steps),
+                "min_notional_fraction": str(self.policy.tolerance_min_notional_fraction),
             }
             ticker = self.client.book_ticker(symbol)
             bid, ask = float(ticker["bidPrice"]), float(ticker["askPrice"])
-            mark, reference = (bid + ask) / 2.0, float(book.reference_prices.get(symbol) or (bid + ask) / 2.0)
+            mark = (bid + ask) / 2.0
+            # Fail CLOSED on a missing or non-positive paper reference. The old
+            # `reference_prices.get(symbol) or mark` collapsed a missing price to the live
+            # mark, giving drift == 0 and silently disabling this gate exactly when the
+            # target file was incomplete - which is when it matters most.
+            raw_reference = book.reference_prices.get(symbol)
+            if not weight:
+                # Orphan: on the exchange, absent from the target, about to be CLOSED. The
+                # target file legitimately has no paper reference for it, and a drift gate
+                # is meaningless for a close. Reference = live mark for attribution only.
+                reference = mark
+            else:
+                if raw_reference is None or float(raw_reference) <= 0:
+                    raise RuntimeError(
+                        f"{symbol}: target has no positive paper reference price; refusing to plan "
+                        f"(drift gate would be blind)"
+                    )
+                reference = float(raw_reference)
+                reference_drift_bps = abs(mark / reference - 1.0) * 10_000
+                drift_by_symbol[symbol] = reference_drift_bps
+                if reference_drift_bps > self.policy.max_reference_drift_bps:
+                    raise RuntimeError(
+                        f"{symbol}: frozen reference drift {reference_drift_bps:.2f}bps exceeds "
+                        f"per-symbol limit {self.policy.max_reference_drift_bps:.2f}bps"
+                    )
             if not weight:
                 self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="SELL" if current > 0 else "BUY", quantity=abs(current), reduce_only=True, reference=reference, reason="close_orphan", desired=Decimal("0"), current=current, target_weight=0.0)
                 expected_positions[symbol] = Decimal("0")
@@ -396,11 +473,24 @@ class TestnetExecutor:
         # Across the whole portfolio every reduce-only/closing leg must complete before
         # any opening leg.  Symbol sort alone can interleave opens ahead of later closes.
         legs.sort(key=lambda leg: (0 if leg.reduce_only else 1, leg.symbol, leg.reason))
+        # Portfolio-level drift: a broad regime move since the paper close means every
+        # reference is stale in the same direction; the median catches that even when no
+        # single symbol crosses its own (wider) veto line.
+        if drift_by_symbol:
+            median_drift = float(statistics.median(drift_by_symbol.values()))
+            if median_drift > self.policy.max_median_reference_drift_bps:
+                worst = sorted(drift_by_symbol.items(), key=lambda kv: -kv[1])[:5]
+                raise RuntimeError(
+                    f"portfolio median reference drift {median_drift:.2f}bps exceeds "
+                    f"{self.policy.max_median_reference_drift_bps:.2f}bps; worst: "
+                    + ", ".join(f"{sym}={d:.0f}" for sym, d in worst)
+                )
         return ExecutionPlan(
             legs=legs, skips=skips,
             expected_positions={symbol: quantity for symbol, quantity in sorted(expected_positions.items())},
             tolerance_budgets=tolerance_budgets, gross_budget=float(gross_budget),
             orphan_symbols=sorted(orphan_symbols),
+            position_snapshot=position_snapshot, reference_drift_bps=drift_by_symbol,
         )
 
     @staticmethod
@@ -426,6 +516,19 @@ class TestnetExecutor:
     ) -> tuple[dict[str, Any], str]:
         client_order_id = prepared_client_order_id or self._client_order_id(run_id, book, leg, sequence)
         params = prepared_params or self._order_params(leg, client_order_id, force_market=force_market)
+        # Re-quote immediately before the POST so the slippage gate measures the fill
+        # against the price that existed when the order left, not the plan-time mark
+        # (which for a late leg is minutes old and contaminated by market drift). Best
+        # effort: a failed re-quote keeps the plan-time reference rather than blocking the
+        # submit, and emergency flattens (force_market) are ungated anyway.
+        if not force_market:
+            try:
+                fresh = self.client.book_ticker(leg.symbol)
+                fresh_mid = (float(fresh["bidPrice"]) + float(fresh["askPrice"])) / 2.0
+                if fresh_mid > 0:
+                    leg.execution_reference_price = fresh_mid
+            except BaseException:
+                pass
         try:
             response = self.client.order(**params)
         except BinanceAPIError as original:
@@ -448,9 +551,11 @@ class TestnetExecutor:
             average = float(response.get("avgPrice", 0) or 0)
         except (TypeError, ValueError):
             return None
-        if average <= 0 or leg.reference_price <= 0:
+        if average <= 0 or leg.execution_reference_price <= 0:
             return None
-        return (1.0 if leg.side == "BUY" else -1.0) * (average / leg.reference_price - 1.0) * 10_000
+        return (1.0 if leg.side == "BUY" else -1.0) * (
+            average / leg.execution_reference_price - 1.0
+        ) * 10_000
 
     def _safe_engage(self, run_id: str, reason: str) -> bool:
         try:
@@ -476,6 +581,7 @@ class TestnetExecutor:
             "target_id": book.target_id,
             "authorized_budget_usd": float(approval["authorized_budget_usd"]),
             "effective_gross_budget_usd": plan.gross_budget,
+            "frozen_testnet_gross_ceiling_usd": FROZEN_TESTNET_GROSS_CEILING_USD,
             "expected_positions": {symbol: str(quantity) for symbol, quantity in plan.expected_positions.items()},
             # The tolerance rule is part of the hashed contract.  Its min-notional
             # component is converted to quantity only once verification prices exist.
@@ -499,35 +605,34 @@ class TestnetExecutor:
         symbols = sorted(set(plan.expected_positions) | {symbol for symbol, qty in actual.items() if qty != 0})
         try:
             prices = {}
-            open_orders = {}
             for symbol in symbols:
                 ticker = self.client.book_ticker(symbol)
                 prices[symbol] = (float(ticker["bidPrice"]) + float(ticker["askPrice"])) / 2.0
-                open_orders[symbol] = self.client.open_orders(symbol)
+            global_open_orders = self.client.open_orders()
         except BaseException as exc:
             raise VerificationUnavailableError(f"verification snapshot unavailable: {exc}") from exc
+        open_order_counts: dict[str, int] = {}
+        for order in global_open_orders:
+            symbol = str(order.get("symbol", "")).upper()
+            open_order_counts[symbol] = open_order_counts.get(symbol, 0) + 1
         rows = []
         for symbol in symbols:
             expected = plan.expected_positions.get(symbol, Decimal("0"))
             observed = actual.get(symbol, Decimal("0"))
-            budget = plan.tolerance_budgets.get(symbol, {})
-            step = _decimal(budget.get("step_size", "0"))
-            rounding_steps = _decimal(budget.get("rounding_steps", "0"))
-            min_notional = _decimal(budget.get("min_notional", "0"))
-            min_notional_fraction = _decimal(budget.get("min_notional_fraction", "0"))
             price = _decimal(prices[symbol])
-            tolerance = max(
-                step * rounding_steps,
-                (min_notional / price) * min_notional_fraction,
-            ) if price > 0 else Decimal("0")
+            tolerance = quantity_tolerance(plan.tolerance_budgets.get(symbol, {}), price)
             error = abs(observed - expected)
             rows.append({
                 "symbol": symbol, "verification_price": prices[symbol],
                 "expected_quantity": str(expected), "actual_quantity": str(observed),
                 "quantity_error": str(error), "quantity_tolerance": str(tolerance),
                 "expected_notional": float(expected * price), "actual_notional": float(observed * price),
-                "open_orders": len(open_orders[symbol]),
-                "ok": error <= tolerance and not open_orders[symbol],
+                "open_orders": open_order_counts.get(symbol, 0),
+                # quantity_ok answers "is the POSITION right"; ok additionally requires no
+                # resting order. execute() needs them separately: a wrong quantity is a
+                # flatten, a stray order on a correct quantity is a cancel.
+                "quantity_ok": price > 0 and error <= tolerance,
+                "ok": price > 0 and error <= tolerance and open_order_counts.get(symbol, 0) == 0,
             })
         expected_gross = sum(abs(row["expected_notional"]) for row in rows)
         actual_gross = sum(abs(row["actual_notional"]) for row in rows)
@@ -535,9 +640,10 @@ class TestnetExecutor:
             "price_basis": "single post-trade book-ticker pass",
             "expected_gross_notional": expected_gross,
             "actual_gross_notional": actual_gross,
+            "global_open_orders": global_open_orders,
             "rows": rows,
         }
-        return bool(rows) and all(row["ok"] for row in rows), payload
+        return bool(rows) and not global_open_orders and all(row["ok"] for row in rows), payload
 
     def _configure_symbol(self, symbol: str) -> None:
         try:
@@ -548,8 +654,39 @@ class TestnetExecutor:
                 raise
         self.client.set_leverage(symbol, self.policy.leverage)
 
+    def _cancel_only(self, run_id: str, symbols: set[str], reason: str) -> bool:
+        """Cancel known and globally visible orders without changing any position."""
+
+        try:
+            pending_before = self.client.open_orders()
+        except BaseException as exc:
+            pending_before = []
+            self.audit.positions(run_id, "cancel_only_snapshot_failed", {"error": str(exc)})
+        pending_symbols = {
+            str(row.get("symbol", "")).upper()
+            for row in pending_before if str(row.get("symbol", "")).strip()
+        }
+        failures = {}
+        for symbol in sorted(set(symbols) | pending_symbols):
+            try:
+                self.client.cancel_all(symbol)
+            except BaseException as exc:
+                failures[symbol] = str(exc)
+        try:
+            pending_after = self.client.open_orders()
+            verified = not pending_after
+        except BaseException as exc:
+            pending_after = [{"verification_error": str(exc)}]
+            verified = False
+        self.audit.positions(run_id, "external_drift_cancel_only", {
+            "reason": reason, "known_symbols": sorted(symbols),
+            "open_orders_before": pending_before, "open_orders_after": pending_after,
+            "cancel_failures": failures, "verified": verified,
+        })
+        return verified
+
     def _flatten_all(self, run_id: str, reason: str, target_symbols: set[str]) -> bool:
-        """MARKET-only, retrying emergency flatten that verifies the final inventory.
+        """MARKET-only emergency flatten verified by inventory and open orders.
 
         No BaseException is allowed to escape this cleanup routine: a second Ctrl+C is
         recorded but cannot turn a partially flattened account into silent success.
@@ -566,6 +703,7 @@ class TestnetExecutor:
             try:
                 positions = self.client.positions()
                 instruments = instruments_from_exchange_info(self.client.exchange_info())
+                pending_before = self.client.open_orders()
             except BaseException as exc:
                 self.audit.positions(run_id, f"flatten_inventory_failed:{attempt}", {"error": str(exc), "reason": reason})
                 try:
@@ -574,9 +712,29 @@ class TestnetExecutor:
                     self.audit.positions(run_id, f"flatten_retry_interrupted:{attempt}", {"error": str(sleep_exc)})
                 continue
             nonzero = [row for row in positions if _decimal(row.get("positionAmt", 0)) != 0]
-            self.audit.positions(run_id, f"emergency_flatten_attempt:{attempt}", positions)
-            if not nonzero:
-                self.audit.positions(run_id, "emergency_flatten_verified", [])
+            pending_symbols = {
+                str(row.get("symbol", "")).upper()
+                for row in pending_before if str(row.get("symbol", "")).strip()
+            }
+            for symbol in sorted(pending_symbols):
+                try:
+                    self.client.cancel_all(symbol)
+                    cancelled.add(symbol)
+                except BaseException as exc:
+                    self.audit.positions(run_id, f"cancel_all_failed:{symbol}", {"error": str(exc)})
+            try:
+                pending_after = self.client.open_orders()
+            except BaseException as exc:
+                self.audit.positions(run_id, f"flatten_open_orders_verify_failed:{attempt}", {"error": str(exc)})
+                pending_after = pending_before
+            self.audit.positions(run_id, f"emergency_flatten_attempt:{attempt}", {
+                "positions": positions, "open_orders_before": pending_before,
+                "open_orders_after": pending_after,
+            })
+            if not nonzero and not pending_after:
+                self.audit.positions(run_id, "emergency_flatten_verified", {
+                    "positions": [], "open_orders": [],
+                })
                 return True
             for row_index, row in enumerate(nonzero):
                 symbol, current = str(row.get("symbol", "")).upper(), _decimal(row.get("positionAmt", 0))
@@ -596,7 +754,11 @@ class TestnetExecutor:
                     # on book_ticker here would make a market-data outage disable the
                     # one path that must remain available during cleanup.
                     reference = float(row.get("markPrice", row.get("entryPrice", 0)) or 0)
-                    leg = PlanLeg(symbol, "SELL" if current > 0 else "BUY", abs(current), True, reference, "emergency_flatten", Decimal(0), current, 0.0)
+                    leg = PlanLeg(
+                        symbol, "SELL" if current > 0 else "BUY", abs(current), True,
+                        reference, "emergency_flatten", Decimal(0), current, 0.0,
+                        execution_reference_price=reference,
+                    )
                     response, client_id = self._submit_leg(run_id, emergency_book, leg, sequence, force_market=True)
                     self.audit.leg(run_id, sequence, leg, str(response.get("status", "UNKNOWN")), response, client_order_id=client_id)
                 except BaseException as exc:
@@ -607,7 +769,10 @@ class TestnetExecutor:
                 self.audit.positions(run_id, f"flatten_retry_interrupted:{attempt}", {"error": str(exc)})
         try:
             remaining = [row for row in self.client.positions() if _decimal(row.get("positionAmt", 0)) != 0]
-            self.audit.positions(run_id, "emergency_flatten_unresolved", remaining)
+            pending = self.client.open_orders()
+            self.audit.positions(run_id, "emergency_flatten_unresolved", {
+                "positions": remaining, "open_orders": pending,
+            })
         except BaseException as exc:
             self.audit.positions(run_id, "emergency_flatten_verify_failed", {"error": str(exc)})
         return False
@@ -615,6 +780,7 @@ class TestnetExecutor:
     def execute(self, book: TargetBook, *, dry_run: bool) -> dict[str, Any]:
         run_id, armed, orders_started = uuid.uuid4().hex, False, False
         approval: dict[str, Any] = {}
+        plan: ExecutionPlan | None = None
         self.audit.start(run_id, book, dry_run)
         try:
             if not dry_run:
@@ -641,7 +807,9 @@ class TestnetExecutor:
             critical_skips = [message for message in skips if not message.endswith("safe_noop")]
             if critical_skips:
                 raise RuntimeError("incomplete target; refuse partial portfolio: " + ", ".join(critical_skips))
-            self.audit.positions(run_id, "before_orders", self.client.positions())
+            # Same read the contract was derived from - not a second, independent call.
+            self.audit.positions(run_id, "before_orders", plan.position_snapshot)
+            self.audit.positions(run_id, "reference_drift_bps", plan.reference_drift_bps)
             orphan_symbols = plan.orphan_symbols
             self.audit.positions(run_id, "orphan_symbols", orphan_symbols)
             pending_before = self.client.open_orders()
@@ -660,15 +828,26 @@ class TestnetExecutor:
                 if abs(weight) > 0:
                     self._configure_symbol(symbol)
             for index, leg in enumerate(legs):
-                # From this boundary onward an ambiguous POST or interruption may have
-                # mutated positions, so failures must cancel per-symbol and flatten.
+                # Everything BEFORE _submit_leg on a given iteration cannot have moved a
+                # position. If it fails after an earlier leg already filled, the right
+                # response is to stop and hand off (HaltedError), not to liquidate a book
+                # that is correct as far as anyone can tell. Only the submit itself, and the
+                # post-fill checks, may escalate to a flatten.
                 client_order_id = self._client_order_id(run_id, book, leg, index)
-                prepared_params = self._order_params(leg, client_order_id)
-                self.kill_switch.assert_released_for_testnet(
-                    max_age_seconds=self.policy.kill_switch_release_ttl_seconds,
-                    expected_target_id=book.target_id,
-                    expected_budget_usd=self.policy.max_gross_notional_usd,
-                )
+                try:
+                    prepared_params = self._order_params(leg, client_order_id)
+                    self.kill_switch.assert_released_for_testnet(
+                        max_age_seconds=self.policy.kill_switch_release_ttl_seconds,
+                        expected_target_id=book.target_id,
+                        expected_budget_usd=self.policy.max_gross_notional_usd,
+                    )
+                except BaseException as pre_exc:
+                    if orders_started:
+                        raise HaltedError(
+                            f"halted before leg {index} ({leg.symbol} {leg.reason}) with "
+                            f"{index} legs already filled: {type(pre_exc).__name__}: {pre_exc}"
+                        ) from pre_exc
+                    raise
                 orders_started = True
                 response, client_order_id = self._submit_leg(
                     run_id, book, leg, index, prepared_params=prepared_params,
@@ -693,10 +872,37 @@ class TestnetExecutor:
             verification["contract_sha256"] = contract["contract_sha256"]
             self.audit.positions(run_id, "target_verification", verification)
             if not positions_ok:
+                quantity_failed = {
+                    str(row["symbol"]) for row in verification["rows"]
+                    if not row.get("quantity_ok", row["ok"])
+                }
+                safe_noop_symbols = {
+                    message.split(":", 1)[0]
+                    for message in plan.skips if message.endswith("safe_noop")
+                }
+                if not quantity_failed:
+                    # Every position quantity is right; only resting orders (on these or on
+                    # unrelated symbols) spoiled verification. Cancel them, do not liquidate.
+                    stray = verification.get("global_open_orders") or []
+                    stray_symbols = sorted({str(o.get("symbol", "")) for o in stray})
+                    raise HaltedError(
+                        f"positions match contract but {len(stray)} open order(s) remain "
+                        f"on {stray_symbols}; cancel-only"
+                    )
+                if quantity_failed <= safe_noop_symbols:
+                    raise ExternalPositionDriftError(
+                        "external position drift on safe-noop symbols: "
+                        + ", ".join(sorted(quantity_failed))
+                    )
+                bad = [
+                    "{} obs={} exp={} tol={}".format(
+                        row["symbol"], row.get("observed_quantity"),
+                        row.get("expected_quantity"), row.get("quantity_tolerance"))
+                    for row in verification["rows"] if str(row["symbol"]) in quantity_failed
+                ]
                 raise TargetMismatchError(
-                    f"final exchange positions do not match execution contract: gross "
-                    f"{verification['actual_gross_notional']:.2f} vs "
-                    f"{verification['expected_gross_notional']:.2f} USD"
+                    "final exchange positions do not match execution contract on "
+                    + "; ".join(bad)
                 )
             if not self._safe_engage(run_id, f"run {run_id} complete; manual release required for next run"):
                 raise RuntimeError("could not re-engage kill switch after completed orders")
@@ -706,16 +912,34 @@ class TestnetExecutor:
             if armed:
                 self._safe_engage(run_id, f"automatic emergency stop: {type(exc).__name__}: {exc}")
             flatten_ok: bool | None = None
-            if orders_started and not isinstance(exc, VerificationUnavailableError):
+            cancel_only_ok: bool | None = None
+            surface_symbols = set(book.weights)
+            if plan is not None:
+                surface_symbols.update(plan.expected_positions)
+                surface_symbols.update(plan.orphan_symbols)
+            if isinstance(exc, (ExternalPositionDriftError, HaltedError)):
                 try:
-                    flatten_ok = self._flatten_all(run_id, f"{type(exc).__name__}: {exc}", set(book.weights))
+                    cancel_only_ok = self._cancel_only(run_id, surface_symbols, str(exc))
+                except BaseException as cleanup_exc:
+                    cancel_only_ok = False
+                    try:
+                        self.audit.positions(run_id, "external_drift_cancel_crashed", {"error": str(cleanup_exc)})
+                    except BaseException:
+                        pass
+            elif orders_started and not isinstance(exc, VerificationUnavailableError):
+                try:
+                    flatten_ok = self._flatten_all(run_id, f"{type(exc).__name__}: {exc}", surface_symbols)
                 except BaseException as cleanup_exc:
                     flatten_ok = False
                     try:
                         self.audit.positions(run_id, "emergency_cleanup_crashed", {"error": str(cleanup_exc)})
                     except BaseException:
                         pass
-            if flatten_ok is False:
+            if isinstance(exc, HaltedError):
+                final_status = "HALTED_MID_BOOK" if cancel_only_ok else "HALTED_CANCEL_FAILED"
+            elif isinstance(exc, ExternalPositionDriftError):
+                final_status = "EXTERNAL_POSITION_DRIFT" if cancel_only_ok else "EXTERNAL_DRIFT_CANCEL_FAILED"
+            elif flatten_ok is False:
                 final_status = "UNRESOLVED_EXPOSURE"
             elif isinstance(exc, VerificationUnavailableError):
                 final_status = "VERIFICATION_UNAVAILABLE"

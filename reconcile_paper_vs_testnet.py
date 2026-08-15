@@ -9,6 +9,7 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
+from execution.contracts import FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
 from execution.targets import load_target_book
 
 
@@ -54,14 +55,7 @@ def compare_contract_to_positions(
         source = verification_rows.get(symbol, {})
         price = Decimal(str(source.get("verification_price", 0) or 0))
         budget = tolerance_budgets.get(symbol, {})
-        step = Decimal(str(budget.get("step_size", 0)))
-        rounding_steps = Decimal(str(budget.get("rounding_steps", 0)))
-        min_notional = Decimal(str(budget.get("min_notional", 0)))
-        min_notional_fraction = Decimal(str(budget.get("min_notional_fraction", 0)))
-        tolerance = max(
-            step * rounding_steps,
-            (min_notional / price) * min_notional_fraction,
-        ) if price > 0 else Decimal("0")
+        tolerance = quantity_tolerance(budget, price)
         expected_quantity = expected.get(symbol, Decimal("0"))
         actual_quantity = actual.get(symbol, Decimal("0"))
         error = abs(actual_quantity - expected_quantity)
@@ -79,7 +73,8 @@ def compare_contract_to_positions(
         "actual_gross_notional": sum(abs(row["actual_notional"]) for row in rows),
     }
     gross["gross_error_usd"] = abs(gross["actual_gross_notional"] - gross["expected_gross_notional"])
-    return bool(rows) and all(row["ok"] for row in rows), rows, gross
+    no_global_open_orders = not verification.get("global_open_orders", [])
+    return bool(rows) and no_global_open_orders and all(row["ok"] for row in rows), rows, gross
 
 
 def main() -> int:
@@ -98,7 +93,14 @@ def main() -> int:
         print(f"No execution run exists for frozen target {target.target_id}.")
         return 0
     run_id = row[0]
-    legs = conn.execute("SELECT symbol,side,quantity,reduce_only,reference_price,reason,status,order_id,avg_fill_price,fill_slippage_bps,client_order_id,desired_quantity,current_quantity,target_weight FROM execution_legs WHERE run_id=? ORDER BY sequence", (run_id,)).fetchall()
+    leg_columns = {item[1] for item in conn.execute("PRAGMA table_info(execution_legs)")}
+    execution_reference_column = "execution_reference_price" if "execution_reference_price" in leg_columns else "NULL"
+    legs = conn.execute(
+        "SELECT symbol,side,quantity,reduce_only,reference_price,reason,status,order_id,"
+        "avg_fill_price,fill_slippage_bps,client_order_id,desired_quantity,current_quantity,"
+        f"target_weight,{execution_reference_column} FROM execution_legs "
+        "WHERE run_id=? ORDER BY sequence", (run_id,),
+    ).fetchall()
     snapshots = conn.execute("SELECT phase,captured_utc,positions_json FROM position_snapshots WHERE run_id=? ORDER BY captured_utc", (run_id,)).fetchall()
     final_snapshot = next((item for item in reversed(snapshots) if item[0] == "after_orders"), None)
     contract_snapshot = next((item for item in reversed(snapshots) if item[0] == "execution_contract"), None)
@@ -111,7 +113,12 @@ def main() -> int:
     try:
         authorized_budget = float(contract["authorized_budget_usd"])
         effective_budget = float(contract["effective_gross_budget_usd"])
-        authorization_ok = authorized_budget > 0 and 0 < effective_budget <= authorized_budget
+        frozen_ceiling = float(contract["frozen_testnet_gross_ceiling_usd"])
+        authorization_ok = (
+            authorized_budget > 0
+            and 0 < effective_budget <= authorized_budget <= frozen_ceiling
+            and frozen_ceiling == FROZEN_TESTNET_GROSS_CEILING_USD
+        )
     except (KeyError, TypeError, ValueError):
         authorization_ok = False
     vector_ok, comparison, gross = compare_contract_to_positions(contract, actual, verification) if contract else (False, [], {})
@@ -126,7 +133,7 @@ def main() -> int:
         "authorization_binding_ok": authorization_ok,
         "gross_reconciliation": gross,
         "comparison": comparison,
-        "fills": [dict(zip(("symbol", "side", "quantity", "reduce_only", "reference_price", "reason", "status", "order_id", "avg_fill_price", "fill_slippage_bps", "client_order_id", "desired_quantity", "current_quantity", "target_weight"), leg)) for leg in legs],
+        "fills": [dict(zip(("symbol", "side", "quantity", "reduce_only", "paper_reference_price", "reason", "status", "order_id", "avg_fill_price", "execution_slippage_bps", "client_order_id", "desired_quantity", "current_quantity", "target_weight", "execution_reference_price"), leg)) for leg in legs],
         "position_snapshots": [{"phase": phase, "captured_utc": captured, "positions": json.loads(payload)} for phase, captured, payload in snapshots],
     }
     print(json.dumps(report, indent=2, default=str, allow_nan=False))
