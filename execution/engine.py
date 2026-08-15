@@ -295,6 +295,16 @@ class ExecutionAudit:
         self.connection.execute("INSERT INTO position_snapshots VALUES (?, ?, ?, ?)", (run_id, phase, utc_now(), json.dumps(payload, default=str)))
         self.connection.commit()
 
+    def target_in_flight(self, target_id: str, *, except_run_id: str = "") -> bool:
+        """A live run of this target is still RUNNING (or died without a terminal row).
+        A second executor must not stack orders on top of an unknown state. The caller
+        passes its own run_id, since audit.start() has already written that row."""
+        return self.connection.execute(
+            "SELECT 1 FROM execution_runs WHERE target_id=? AND dry_run=0 AND status='RUNNING' "
+            "AND run_id<>? LIMIT 1",
+            (target_id, except_run_id),
+        ).fetchone() is not None
+
     def target_completed(self, target_id: str) -> bool:
         return self.connection.execute(
             "SELECT 1 FROM execution_runs WHERE target_id=? AND dry_run=0 AND status='COMPLETE' LIMIT 1",
@@ -339,6 +349,11 @@ class TestnetExecutor:
     def __init__(self, client: FuturesREST, policy: ExecutionPolicy, kill_switch: KillSwitch, audit: ExecutionAudit, *, now: Callable[[], datetime] | None = None) -> None:
         if client.environment != "testnet" or policy.environment != "testnet":
             raise ValueError("TestnetExecutor refuses any non-testnet client or policy")
+        # A real REST client also has to be POINTED at testnet, not merely labelled testnet.
+        # Fakes in tests carry no base_url and are exempt; anything with one must match.
+        base_url = getattr(client, "base_url", None)
+        if base_url is not None and "testnet" not in str(base_url):
+            raise ValueError(f"TestnetExecutor refuses a client whose base_url is not testnet: {base_url}")
         self.client, self.policy, self.kill_switch, self.audit = client, policy, kill_switch, audit
         self._now = now or (lambda: datetime.now(timezone.utc))
 
@@ -852,6 +867,11 @@ class TestnetExecutor:
                 self.assert_target_identity(book)
                 if self.audit.target_completed(book.target_id):
                     raise RuntimeError(f"target_id already completed: {book.target_id}")
+                if self.audit.target_in_flight(book.target_id, except_run_id=run_id):
+                    raise RuntimeError(
+                        f"target_id has a run still RUNNING: {book.target_id}; refusing to stack a "
+                        f"second execution on an unknown state (resolve or mark the old run first)"
+                    )
                 approval = self.kill_switch.assert_released_for_testnet(
                     max_age_seconds=self.policy.kill_switch_release_ttl_seconds,
                     expected_target_id=book.target_id,

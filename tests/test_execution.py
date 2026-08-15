@@ -886,6 +886,22 @@ def test_reconciler_cli_exits_3_and_prints_held_book_on_halted_run(tmp_path, cap
     assert "ATTENTION" in out and "HALTED_MID_BOOK" in out and "AAAUSDT" in out
 
 
+def test_target_with_a_running_live_run_is_refused_before_any_order(tmp_path) -> None:
+    """A second executor firing while the first is still RUNNING (or died without a terminal
+    row) must not stack a second book on top of an unknown state."""
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "in-flight", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100.0, "BBBUSDT": 100.0}, "unit-test")
+    client, kill = TrackingClient(), KillSwitch(tmp_path / "kill.json")
+    _release(kill, book)
+    audit = ExecutionAudit(tmp_path / "audit.sqlite3")
+    audit.connection.execute("INSERT INTO execution_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                             ("ghost", now.isoformat(), "", "in-flight", "testnet", 0, "RUNNING", ""))
+    audit.connection.commit()
+    with pytest.raises(RuntimeError, match="still RUNNING"):
+        TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now).execute(book, dry_run=False)
+    assert client.orders == []
+
+
 def test_release_is_bound_to_exact_target_and_operator_budget(tmp_path) -> None:
     switch = KillSwitch(tmp_path / "kill.json")
     switch.release("approved", target_id="target-a", authorized_budget_usd=500)

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -58,13 +59,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+LOG_COLUMNS = ("utc", "target_id", "status", "reconcile_exit", "plan_legs", "plan_skips", "detail")
+
+
 def _log(row: dict) -> None:
     new = not LOG.exists()
     with LOG.open("a", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(row))
+        w = csv.DictWriter(fh, fieldnames=LOG_COLUMNS, extrasaction="ignore")
         if new:
             w.writeheader()
-        w.writerow(row)
+        w.writerow({c: row.get(c, "") for c in LOG_COLUMNS})
 
 
 def _attention(reason: str, detail: dict) -> None:
@@ -92,12 +96,64 @@ def _refuse_unless_testnet_only() -> None:
         )
 
 
+LOCK = ROOT / ".execution" / "testnet_daily.lock"
+
+
+def _acquire_lock():
+    """Exclusive create; a second concurrent fire must not double-execute the same book.
+
+    O_EXCL is atomic on NTFS/POSIX. A stale lock (previous process killed) is left for a
+    human: it is written with the pid + start time and shows up as an ATTENTION so nothing
+    piles a new run onto an unknown state.
+    """
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return None
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"pid": os.getpid(), "started_utc": _now()}))
+    return LOCK
+
+
 def main() -> int:
+    try:
+        return _main()
+    except SystemExit:
+        raise
+    except BaseException as exc:   # noqa: BLE001 - last line of defence; must never be silent
+        try:
+            _attention("unexpected_crash", {"error": f"{type(exc).__name__}: {exc}"})
+        except BaseException:
+            pass
+        raise
+
+
+def _main() -> int:
     _refuse_unless_testnet_only()
+    lock = _acquire_lock()
+    if lock is None:
+        _attention("concurrent_or_stale_lock", {
+            "lock": str(LOCK),
+            "note": "another run is in progress, or a previous run died without releasing. "
+                    "Check Task Scheduler / process list; if none is running, inspect the exchange, "
+                    "then delete the lock AND the ATTENTION marker.",
+        })
+        return 7
+    try:
+        return _run()
+    finally:
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _run() -> int:
     started = _now()
 
     # 1. Fresh targets from today's paper state (deterministic; safe to re-run).
-    exp = subprocess.run([PYTHON, "-B", str(ROOT / "export_carry_targets.py")], capture_output=True, text=True, cwd=ROOT)
+    exp = subprocess.run([PYTHON, "-B", str(ROOT / "export_carry_targets.py")], capture_output=True, text=True, cwd=ROOT, timeout=900)
     if exp.returncode != 0:
         _attention("export_targets_failed", {"stdout": exp.stdout[-2000:], "stderr": exp.stderr[-2000:]})
         return 4
@@ -145,7 +201,7 @@ def main() -> int:
     # 4. Reconcile. Exit 0 = matches contract; 2 = mismatch; 3 = hand-off state exists.
     rec = subprocess.run([PYTHON, "-B", str(ROOT / "reconcile_paper_vs_testnet.py"),
                           "--targets", str(TARGETS), "--audit", str(AUDIT)],
-                         capture_output=True, text=True, cwd=ROOT)
+                         capture_output=True, text=True, cwd=ROOT, timeout=300)
     _log({"utc": started, "target_id": book.target_id, "status": status,
           "reconcile_exit": rec.returncode, "detail": detail,
           "plan_legs": len(plan.get("legs", [])), "plan_skips": len(plan.get("skips", []))})

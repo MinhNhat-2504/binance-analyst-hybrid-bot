@@ -43,7 +43,11 @@ def _wire(monkeypatch, tmp_path, client_factory, ceilings_live=0.0):
             return Proc(calls["reconcile_rc"], "reconcile output")
         raise AssertionError(cmd)
     monkeypatch.setattr(daily.subprocess, "run", fake_run)
-    monkeypatch.setattr(daily.FuturesREST, "from_env", staticmethod(lambda env, required=True: client_factory()))
+    def fake_from_env(env, required=True):
+        calls["from_env_environment"] = env
+        return client_factory()
+    monkeypatch.setattr(daily.FuturesREST, "from_env", staticmethod(fake_from_env))
+    monkeypatch.setattr(daily, "LOCK", tmp_path / ".execution" / "daily.lock")
     return calls
 
 
@@ -101,3 +105,48 @@ def test_halt_leaves_attention_marker_and_incident(monkeypatch, tmp_path):
     # And the very next run refuses until a human clears the marker.
     with pytest.raises(SystemExit, match="ATTENTION"):
         daily.main()
+
+
+def test_script_asks_for_testnet_credentials_by_name(monkeypatch, tmp_path):
+    """Lock #1 rests on one string literal. Pin it: the daily script must call
+    from_env("testnet"). (The executor also refuses any client whose base_url is not testnet.)"""
+    from test_execution import TrackingClient
+    calls = _wire(monkeypatch, tmp_path, TrackingClient)
+    assert daily.main() == 0
+    assert calls["from_env_environment"] == "testnet"
+
+
+def test_concurrent_second_fire_is_refused_by_lock(monkeypatch, tmp_path):
+    from test_execution import TrackingClient
+    _wire(monkeypatch, tmp_path, TrackingClient)
+    daily.LOCK.parent.mkdir(exist_ok=True)
+    daily.LOCK.write_text('{"pid": 1, "started_utc": "now"}', encoding="utf-8")   # another run "in progress"
+    assert daily.main() == 7
+    assert daily.ATTENTION.exists()
+    assert "concurrent_or_stale_lock" in daily.ATTENTION.read_text(encoding="utf-8")
+
+
+def test_unexpected_crash_still_leaves_attention_marker(monkeypatch, tmp_path):
+    """Round-10 review: a crash BEFORE the run body wrote nothing and looked like silence
+    for weeks. Any unexpected exception must leave the marker."""
+    from test_execution import TrackingClient
+    _wire(monkeypatch, tmp_path, TrackingClient)
+    monkeypatch.setattr(daily, "load_target_book", lambda p: (_ for _ in ()).throw(RuntimeError("corrupt targets file")))
+    with pytest.raises(RuntimeError, match="corrupt targets"):
+        daily.main()
+    assert daily.ATTENTION.exists()
+    assert "unexpected_crash" in daily.ATTENTION.read_text(encoding="utf-8")
+    assert not daily.LOCK.exists()   # lock released even on crash
+
+
+def test_executor_refuses_client_pointed_at_production_url():
+    from execution.binance_futures import LIVE_BASE_URL
+    from execution.engine import ExecutionAudit, ExecutionPolicy, KillSwitch, TestnetExecutor
+    import tempfile, pathlib
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    class LabelledTestnetButPointedAtProd:
+        environment = "testnet"          # says testnet ...
+        base_url = LIVE_BASE_URL         # ... but would talk to fapi.binance.com
+    with pytest.raises(ValueError, match="base_url is not testnet"):
+        TestnetExecutor(LabelledTestnetButPointedAtProd(), ExecutionPolicy(expected_config_sha256="a" * 64),
+                        KillSwitch(tmp / "k.json"), ExecutionAudit(tmp / "a.sqlite3"))
