@@ -19,16 +19,16 @@ def test_collector_never_invents_last_message_and_persists_counters(tmp_path, mo
         "websocket_base": "wss://example.invalid/stream?streams=", "storage": "data",
         "max_disk_gb": 1, "rotate_minutes": 60, "snapshot_min_interval_seconds": 5,
     }
-    collector.run(config, config_sha256="a" * 64, duration_seconds=0.001)
+    collector.run(config, config_sha256="a" * 64, duration_seconds=0.02)
     first = json.loads(state.read_text(encoding="utf-8"))
     assert first["last_message_utc"] is None
     assert first["starts"] == 1 and first["gaps"] >= 1
     first_gaps = first["gaps"]
-    collector.run(config, config_sha256="a" * 64, duration_seconds=0.001)
+    collector.run(config, config_sha256="a" * 64, duration_seconds=0.02)
     second = json.loads(state.read_text(encoding="utf-8"))
     assert second["last_message_utc"] is None
     assert second["starts"] == 2 and second["gaps"] > first_gaps
-    collector.run(config, config_sha256="b" * 64, duration_seconds=0.001)
+    collector.run(config, config_sha256="b" * 64, duration_seconds=0.02)
     third = json.loads(state.read_text(encoding="utf-8"))
     assert third["starts"] == 3 and third["gaps"] > second["gaps"]
     assert third["config_changed_from"] == "a" * 64
