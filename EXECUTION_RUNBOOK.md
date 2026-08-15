@@ -10,7 +10,13 @@ Nguyên tắc duy nhất cần nhớ: engine chỉ tự thanh lý (flatten) khi 
 - Chế độ **one-way** (`--set-one-way-mode` một lần). Hedge mode bị từ chối.
 - Chỉ đặt `BINANCE_TESTNET_API_KEY` / `BINANCE_TESTNET_API_SECRET`. Không đặt `BINANCE_LIVE_*` cho tới khi có ceilings v2.
 
-## Chu trình một ngày bình thường
+## Chế độ tự động (khuyến nghị cho 60 ngày paper)
+
+`run_carry_testnet_daily.py` (task `carry_testnet_task.bat`, chạy sau task paper) làm trọn chu trình dưới đây **không cần bạn**: export → plan → tự release kill-switch cho đúng target hôm nay → execute → tự engage lại → reconcile. Ngày bình thường: im lặng, một dòng vào `carry_testnet_log.csv`. Bất kỳ điều gì khác: tạo file **`.execution/ATTENTION`** + ghi `carry_paper_incidents.md` + **từ chối chạy ngày hôm sau** cho tới khi bạn xử lý theo bảng status bên dưới và xóa marker. Việc của bạn: thỉnh thoảng xem thư mục `.execution/` có file `ATTENTION` không. Không có = mọi thứ ổn.
+
+Nó **tự tắt** ngày `execution_ceilings` khai live > 0 — không cần nhớ tắt khi lên live.
+
+## Chu trình một ngày bình thường (chạy tay, nếu muốn)
 
 ```
 python export_carry_targets.py                       # weight hôm nay từ paper state
