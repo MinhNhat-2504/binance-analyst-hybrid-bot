@@ -179,8 +179,14 @@ def main() -> int:
     base_hold = make_8h_weights(build_8h_panel(hold_bars, hold_funding, entry_lag_bars=1))
     lag_disc = make_8h_weights(build_8h_panel(disc_bars, disc_funding, entry_lag_bars=2))
     lag_hold = make_8h_weights(build_8h_panel(hold_bars, hold_funding, entry_lag_bars=2))
-    daily_bars = {symbol: fetch_klines(symbol, "1d", args.days, use_cache=True) for symbol in all_symbols}
+    # The comparator must end on the same live snapshot.  The generic kline cache is
+    # immutable, so explicitly refetch daily bars rather than compare a fresh 8h arm
+    # against a daily cache that may stop weeks earlier.
+    daily_bars = {symbol: fetch_klines(symbol, "1d", args.days, use_cache=False) for symbol in all_symbols}
     daily_common_end = min(pd.to_datetime(frame["Close time"]).max() for frame in daily_bars.values())
+    current_naive = pd.Timestamp.now(tz="UTC").tz_localize(None)
+    if current_naive - daily_common_end > pd.Timedelta(hours=48):
+        raise RuntimeError(f"daily comparator bars are stale: common close {daily_common_end}")
     daily_bars = {symbol: frame[pd.to_datetime(frame["Close time"]) <= daily_common_end].copy() for symbol, frame in daily_bars.items()}
     daily_base_cfg = CarryConfig(execution_lag_bars=1)
     daily_lag_cfg = CarryConfig(execution_lag_bars=2)
