@@ -27,6 +27,7 @@
   "temporal_cutoff_entry_utc": "2026-04-03T00:00:00Z",
   "statistics": {"periods_per_year": 1095, "hac_lag_bars": 21, "joint_circular_outcome_shifts": "all unique eligible shifts, capped at 999; report actual permutation_n per cell", "minimum_shift_bars": 42},
   "headline": "base next-8h-open, 10bps-per-leg, double-holdout replay is printed first; compare against a daily CARRY-7d arm rebuilt on the same symbols, funding snapshot, cutoff and cost assumptions",
+  "inactive_period_policy": "Post-cutoff headline cells must have zero internal inactive bars and abort otherwise. Pre-cutoff context preserves rare inactive bars as cash returns and reports internal_inactive_periods explicitly; they are never silently dropped.",
   "no_tune_rule": "Exactly this one 8h cell is evaluated. No rebalance frequency, quantile, lookback, universe, or cost variant may be selected after observing its result.",
   "promotion": "A result can only nominate a separate future paper-v2 experiment; it cannot replace or tune the current daily paper experiment."
 }

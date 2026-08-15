@@ -58,16 +58,32 @@ def _cells(
         ("double_holdout_replay", holdout, CUTOFF, None),
     ):
         out[label] = {}
+        selected = weighted.copy()
+        if start is not None:
+            selected = selected[selected["entry_time"] >= pd.Timestamp(start)]
+        if end is not None:
+            selected = selected[selected["entry_time"] < pd.Timestamp(end)]
+        gross = selected.groupby("entry_time")["weight"].apply(lambda values: values.abs().sum()).sort_index()
+        active = gross > 0
+        internal_inactive = 0
+        if active.any():
+            internal_inactive = int((~active.loc[active[active].index[0]:active[active].index[-1]]).sum())
+        # The two post-cutoff cells drive the headline and must contain no internal
+        # zero-return bars. Pre-cutoff cells are historical context; rare data outages
+        # remain explicit cash periods and are counted in every metric payload.
+        enforce_continuous = require_continuous_active and label in {"time_replay_discovery", "double_holdout_replay"}
         for cost in (10.0, 20.0):
             metrics, _ = evaluate_carry(
                 weighted, cost_per_leg_bps=cost, start=start, end=end, n_perm=n_perm,
                 periods_per_year=periods_per_year, hac_max_lag=hac_max_lag,
                 permutation_min_shift=permutation_min_shift,
-                require_continuous_active=require_continuous_active,
+                require_continuous_active=enforce_continuous,
             )
             payload = asdict(metrics)
             payload["n_periods"] = payload.pop("n_days")
             payload["mean_bps_period"] = payload.pop("mean_bps_day")
+            payload["internal_inactive_periods"] = internal_inactive
+            payload["continuous_active_required"] = enforce_continuous
             out[label][f"{int(cost)}bps_per_leg"] = payload
     return out
 
