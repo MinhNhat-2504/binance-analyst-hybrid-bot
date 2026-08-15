@@ -147,6 +147,6 @@ def test_executor_refuses_client_pointed_at_production_url():
     class LabelledTestnetButPointedAtProd:
         environment = "testnet"          # says testnet ...
         base_url = LIVE_BASE_URL         # ... but would talk to fapi.binance.com
-    with pytest.raises(ValueError, match="base_url is not testnet"):
+    with pytest.raises(ValueError, match="not a paper host"):
         TestnetExecutor(LabelledTestnetButPointedAtProd(), ExecutionPolicy(expected_config_sha256="a" * 64),
                         KillSwitch(tmp / "k.json"), ExecutionAudit(tmp / "a.sqlite3"))

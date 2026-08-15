@@ -36,7 +36,32 @@ def main() -> int:
     parser.add_argument("--release-kill-switch", metavar="REASON")
     parser.add_argument("--engage-kill-switch", metavar="REASON")
     parser.add_argument("--set-one-way-mode", action="store_true", help="testnet account setup only; does not place orders")
+    parser.add_argument("--check-credentials", action="store_true", help="read-only: try the BINANCE_TESTNET_* key against the classic testnet and the demo host, report which one accepts it, place nothing")
     args = parser.parse_args()
+
+    if args.check_credentials:
+        import os
+        from execution.binance_futures import DEMO_TESTNET_BASE_URL, TESTNET_BASE_URL
+        outcome = {}
+        for label, host in (("classic", TESTNET_BASE_URL), ("demo", DEMO_TESTNET_BASE_URL)):
+            os.environ["BINANCE_TESTNET_HOST"] = label
+            try:
+                c = FuturesREST.from_env("testnet", required=True)
+                acct = c.account()
+                bal = acct.get("totalMarginBalance") or acct.get("totalWalletBalance")
+                outcome[label] = f"OK  ({host})  margin balance = {bal}"
+            except Exception as exc:  # noqa: BLE001 - diagnostic
+                outcome[label] = f"no  ({host})  {type(exc).__name__}: {str(exc)[:90]}"
+        for label, line in outcome.items():
+            print(f"  {label:8s} {line}")
+        good = [l for l, v in outcome.items() if v.startswith("OK")]
+        if good:
+            print("")
+            print(f"Use this key with:  BINANCE_TESTNET_HOST={good[0]}   (set it as a user env var next to the key)")
+            return 0
+        print("")
+        print("The key was rejected by both paper hosts. Re-check it was created under Futures (not Spot) and is HMAC.")
+        return 1
 
     kill = KillSwitch(KILL)
     if args.engage_kill_switch:

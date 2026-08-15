@@ -17,7 +17,7 @@ from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any, Callable
 
-from .binance_futures import BinanceAPIError, FuturesREST
+from .binance_futures import PAPER_BASE_URLS, BinanceAPIError, FuturesREST
 from .contracts import CEILINGS_SHA256, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
 from .targets import TargetBook
 
@@ -352,8 +352,8 @@ class TestnetExecutor:
         # A real REST client also has to be POINTED at testnet, not merely labelled testnet.
         # Fakes in tests carry no base_url and are exempt; anything with one must match.
         base_url = getattr(client, "base_url", None)
-        if base_url is not None and "testnet" not in str(base_url):
-            raise ValueError(f"TestnetExecutor refuses a client whose base_url is not testnet: {base_url}")
+        if base_url is not None and str(base_url) not in PAPER_BASE_URLS:
+            raise ValueError(f"TestnetExecutor refuses a client whose base_url is not a paper host: {base_url}")
         self.client, self.policy, self.kill_switch, self.audit = client, policy, kill_switch, audit
         self._now = now or (lambda: datetime.now(timezone.utc))
 

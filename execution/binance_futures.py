@@ -18,8 +18,15 @@ from urllib.parse import urlencode
 import requests
 
 
+# Binance offers two paper hosts: the classic futures testnet, and the newer "Demo Trading"
+# environment whose keys are minted at testnet.binancefuture.com's successor UI. Keys are
+# NOT interchangeable between them. BINANCE_TESTNET_HOST=demo selects the demo host; the
+# default stays the classic testnet. Both are paper; neither is fapi.binance.com. The
+# TestnetExecutor guard requires "testnet" in the URL, so a demo URL must carry that word.
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
+DEMO_TESTNET_BASE_URL = "https://demo-fapi.binance.com"   # selected via BINANCE_TESTNET_HOST=demo
 LIVE_BASE_URL = "https://fapi.binance.com"
+PAPER_BASE_URLS = (TESTNET_BASE_URL, DEMO_TESTNET_BASE_URL)
 
 
 class BinanceAPIError(RuntimeError):
@@ -49,7 +56,11 @@ class FuturesREST:
         if environment not in {"testnet", "live"}:
             raise ValueError("environment must be 'testnet' or 'live'")
         self.environment = environment
-        self.base_url = TESTNET_BASE_URL if environment == "testnet" else LIVE_BASE_URL
+        if environment == "testnet":
+            host = os.environ.get("BINANCE_TESTNET_HOST", "classic").strip().lower()
+            self.base_url = DEMO_TESTNET_BASE_URL if host == "demo" else TESTNET_BASE_URL
+        else:
+            self.base_url = LIVE_BASE_URL
         self.credentials = credentials
         self.timeout_seconds = float(timeout_seconds)
         self.session = requests.Session()
