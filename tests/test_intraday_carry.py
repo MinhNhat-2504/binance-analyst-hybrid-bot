@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from clean_research.intraday_carry import build_8h_panel, make_8h_weights
+from run_8h_carry_oos import _assert_trailing_data_complete
 
 
 def test_8h_panel_is_causal_and_weights_are_delta_neutral() -> None:
@@ -70,3 +72,14 @@ def test_8h_funding_jitter_is_snapped_and_gapped_symbol_is_dropped() -> None:
     assert (panel["holding_funding_observations"] == 1).all()
     weighted = make_8h_weights(panel, min_symbols=10)
     assert (weighted.groupby("decision_time")["weight"].apply(lambda x: x.abs().sum()) > 0).any()
+
+
+def test_8h_runner_refuses_silently_stale_funding_tail() -> None:
+    now = pd.Timestamp("2026-08-15T12:00:00Z")
+    bars = {"A": pd.DataFrame({"Close time": [pd.Timestamp("2026-08-15 07:59:59.999")]})}
+    stale = {"A": pd.DataFrame({"fundingTime": [pd.Timestamp("2026-08-01 08:00:00")], "fundingRate": [0.0]})}
+    with pytest.raises(RuntimeError, match="silently trim"):
+        _assert_trailing_data_complete(bars, stale, now=now)
+    fresh = {"A": pd.DataFrame({"fundingTime": [pd.Timestamp("2026-08-15 07:59:59.999")], "fundingRate": [0.0]})}
+    payload = _assert_trailing_data_complete(bars, fresh, now=now)
+    assert payload["trailing_funding_symbols_stale"] == 0

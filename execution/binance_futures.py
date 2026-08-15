@@ -141,6 +141,12 @@ class FuturesREST:
     def set_leverage(self, symbol: str, leverage: int) -> dict[str, Any]:
         return self.signed("POST", "/fapi/v1/leverage", {"symbol": symbol.upper(), "leverage": int(leverage)})
 
+    def set_margin_type(self, symbol: str, margin_type: str) -> dict[str, Any]:
+        margin_type = str(margin_type).upper()
+        if margin_type not in {"CROSSED", "ISOLATED"}:
+            raise ValueError("margin_type must be CROSSED or ISOLATED")
+        return self.signed("POST", "/fapi/v1/marginType", {"symbol": symbol.upper(), "marginType": margin_type})
+
     def order(self, **params: Any) -> dict[str, Any]:
         return self.signed("POST", "/fapi/v1/order", params)
 

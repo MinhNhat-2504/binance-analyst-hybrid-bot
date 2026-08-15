@@ -29,10 +29,16 @@ class ExecutionPolicy:
     max_order_notional_usd: float = 100.0
     max_positions: int = 20
     max_orders: int = 80
-    max_notional_to_equity: float = 2.0
+    max_notional_to_equity: float = 1.0
     max_target_age_seconds: int = 6 * 60 * 60
     max_target_future_seconds: int = 5 * 60
-    leverage: int = 1
+    # Keep deliberate margin headroom: gross exposure is capped at 1x equity while
+    # the exchange leverage is configured to 2x.  The previous 2x/1x combination
+    # was mathematically impossible and failed mid-portfolio with -2019.
+    leverage: int = 2
+    margin_type: str = "CROSSED"
+    flatten_max_attempts: int = 3
+    flatten_retry_seconds: float = 0.5
     expected_config_sha256: str = ""
     order_style: str = "MARKET"
     limit_buffer_bps: float = 3.0
@@ -49,6 +55,12 @@ class ExecutionPolicy:
             raise ValueError("target freshness limits are invalid")
         if self.leverage < 1 or self.leverage > 125:
             raise ValueError("leverage must be in [1, 125]")
+        if self.max_notional_to_equity <= 0 or self.max_notional_to_equity > self.leverage:
+            raise ValueError("max_notional_to_equity must be positive and cannot exceed leverage")
+        if self.margin_type not in {"CROSSED", "ISOLATED"}:
+            raise ValueError("margin_type must be CROSSED or ISOLATED")
+        if self.flatten_max_attempts < 1 or self.flatten_retry_seconds < 0:
+            raise ValueError("flatten retry policy is invalid")
         if self.expected_config_sha256 and (
             len(self.expected_config_sha256) != 64
             or any(char not in "0123456789abcdef" for char in self.expected_config_sha256.lower())
@@ -228,15 +240,32 @@ class TestnetExecutor:
 
     def _append_split(self, legs: list[PlanLeg], *, instrument: Instrument, mark: float, symbol: str, side: str, quantity: Decimal, reduce_only: bool, reference: float, reason: str, desired: Decimal, current: Decimal, target_weight: float) -> None:
         maximum = _round_step(_decimal(self.policy.max_order_notional_usd / mark), instrument.step_size)
+        minimum_notional_qty = _round_step(instrument.min_notional / _decimal(mark), instrument.step_size, up=True)
+        minimum = max(instrument.min_qty, minimum_notional_qty)
         if maximum < instrument.min_qty:
+            raise RuntimeError(f"{symbol}: max_order_notional_usd is below min quantity")
+        if maximum < minimum and not reduce_only:
             raise RuntimeError(f"{symbol}: max_order_notional_usd is below exchange minimum")
-        remaining = quantity
-        while remaining > 0:
-            chunk = min(remaining, maximum)
-            if chunk < instrument.min_qty:
-                raise RuntimeError(f"{symbol}: final order chunk would be below exchange minimum")
+        if quantity < minimum and not reduce_only:
+            raise RuntimeError(f"{symbol}: order delta is below exchange min-notional")
+        chunk_minimum = instrument.min_qty if reduce_only else minimum
+        if quantity < chunk_minimum:
+            raise RuntimeError(f"{symbol}: order quantity is below exchange min quantity")
+        chunks, remaining = [], quantity
+        while remaining > maximum:
+            chunks.append(maximum)
+            remaining -= maximum
+        chunks.append(remaining)
+        if chunks[-1] < chunk_minimum and len(chunks) > 1:
+            needed = chunk_minimum - chunks[-1]
+            if chunks[-2] - needed < chunk_minimum:
+                raise RuntimeError(f"{symbol}: cannot split order into exchange-valid notionals")
+            chunks[-2] -= needed
+            chunks[-1] += needed
+        for chunk in chunks:
+            if chunk < instrument.min_qty or (not reduce_only and chunk * _decimal(mark) < instrument.min_notional):
+                raise RuntimeError(f"{symbol}: order chunk is below exchange minimum")
             legs.append(PlanLeg(symbol, side, chunk, reduce_only, reference, reason, desired, current, target_weight))
-            remaining -= chunk
 
     def build_plan(self, book: TargetBook) -> tuple[list[PlanLeg], list[str]]:
         self.client.sync_time()
@@ -275,8 +304,10 @@ class TestnetExecutor:
                 self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="BUY" if desired > 0 else "SELL", quantity=abs(desired), reduce_only=False, reference=reference, reason="open_after_flip", desired=desired, current=Decimal("0"), target_weight=weight)
             else:
                 delta = desired - current
-                if abs(delta) >= instrument.min_qty:
+                if abs(delta) >= instrument.min_qty and abs(delta) * _decimal(mark) >= instrument.min_notional:
                     self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="BUY" if delta > 0 else "SELL", quantity=abs(delta), reduce_only=current != 0 and current * delta < 0, reference=reference, reason="rebalance", desired=desired, current=current, target_weight=weight)
+                elif delta != 0:
+                    skips.append(f"{symbol}:delta_below_exchange_minimum_safe_noop")
         if any("uncloseable_position" in message for message in skips):
             raise RuntimeError("cannot safely close a current position: " + ", ".join(skips))
         if len(legs) > self.policy.max_orders:
@@ -290,9 +321,9 @@ class TestnetExecutor:
     def _client_order_id(run_id: str, book: TargetBook, leg: PlanLeg, sequence: int, prefix: str = "carry") -> str:
         return f"{prefix}-{hashlib.sha256(f'{run_id}|{book.target_id}|{leg.symbol}|{leg.reason}|{sequence}'.encode()).hexdigest()[:28]}"
 
-    def _order_params(self, leg: PlanLeg, client_order_id: str) -> dict[str, Any]:
+    def _order_params(self, leg: PlanLeg, client_order_id: str, *, force_market: bool = False) -> dict[str, Any]:
         params: dict[str, Any] = {"symbol": leg.symbol, "side": leg.side, "quantity": format(leg.quantity, "f"), "newOrderRespType": "RESULT", "newClientOrderId": client_order_id, "reduceOnly": "true" if leg.reduce_only else "false"}
-        if self.policy.order_style == "MARKET":
+        if force_market or self.policy.order_style == "MARKET":
             params["type"] = "MARKET"
             return params
         ticker = self.client.book_ticker(leg.symbol)
@@ -302,10 +333,10 @@ class TestnetExecutor:
         params.update({"type": "LIMIT", "timeInForce": "IOC", "price": format(_round_step(raw * factor, instrument.tick_size, up=leg.side == "BUY"), "f")})
         return params
 
-    def _submit_leg(self, run_id: str, book: TargetBook, leg: PlanLeg, sequence: int) -> tuple[dict[str, Any], str]:
+    def _submit_leg(self, run_id: str, book: TargetBook, leg: PlanLeg, sequence: int, *, force_market: bool = False) -> tuple[dict[str, Any], str]:
         client_order_id = self._client_order_id(run_id, book, leg, sequence)
         try:
-            response = self.client.order(**self._order_params(leg, client_order_id))
+            response = self.client.order(**self._order_params(leg, client_order_id, force_market=force_market))
         except BinanceAPIError as original:
             try:
                 response = self.client.get_order_by_client_id(leg.symbol, client_order_id)
@@ -316,52 +347,78 @@ class TestnetExecutor:
             response = self.client.get_order(leg.symbol, int(response["orderId"]))
         return response, client_order_id
 
-    def _flatten_all(self, run_id: str, reason: str, target_symbols: set[str]) -> None:
+    def _configure_symbol(self, symbol: str) -> None:
+        try:
+            self.client.set_margin_type(symbol, self.policy.margin_type)
+        except BinanceAPIError as exc:
+            code = exc.payload.get("code") if isinstance(exc.payload, dict) else None
+            if int(code or 0) != -4046:  # "No need to change margin type."
+                raise
+        self.client.set_leverage(symbol, self.policy.leverage)
+
+    def _flatten_all(self, run_id: str, reason: str, target_symbols: set[str]) -> bool:
+        """MARKET-only, retrying emergency flatten that verifies the final inventory.
+
+        No BaseException is allowed to escape this cleanup routine: a second Ctrl+C is
+        recorded but cannot turn a partially flattened account into silent success.
+        """
         cancelled: set[str] = set()
         for symbol in sorted(target_symbols):
             try:
                 self.client.cancel_all(symbol)
                 cancelled.add(symbol)
-            except Exception as exc:
-                self.audit.positions(run_id, f"cancel_all_failed:{symbol}", {"error": str(exc)})
-        try:
-            instruments = instruments_from_exchange_info(self.client.exchange_info())
-            positions = self.client.positions()
-        except Exception as exc:
-            self.audit.positions(run_id, "flatten_inventory_failed", {"error": str(exc), "reason": reason})
-            return
-        self.audit.positions(run_id, "emergency_before_flatten", positions)
-        current_symbols = {
-            str(row.get("symbol", "")).upper()
-            for row in positions
-            if _decimal(row.get("positionAmt", 0)) != 0
-        }
-        for symbol in sorted(current_symbols - cancelled):
-            try:
-                self.client.cancel_all(symbol)
-            except Exception as exc:
+            except BaseException as exc:
                 self.audit.positions(run_id, f"cancel_all_failed:{symbol}", {"error": str(exc)})
         emergency_book = TargetBook("EMERGENCY", f"flatten-{run_id[:16]}", "0" * 64, utc_now(), utc_now(), {}, {}, "emergency")
-        for sequence, row in enumerate(positions, start=10_000):
-            symbol, current = str(row.get("symbol", "")).upper(), _decimal(row.get("positionAmt", 0))
-            if not symbol or current == 0:
-                continue
-            instrument = instruments.get(symbol)
-            if not instrument:
-                self.audit.leg(run_id, sequence, PlanLeg(symbol, "", Decimal(0), True, 0, "flatten_unknown_symbol", Decimal(0), current, 0.0), "ERROR", {"reason": reason})
-                continue
+        for attempt in range(1, self.policy.flatten_max_attempts + 1):
             try:
-                ticker = self.client.book_ticker(symbol)
-                mark = (float(ticker["bidPrice"]) + float(ticker["askPrice"])) / 2
-                leg = PlanLeg(symbol, "SELL" if current > 0 else "BUY", abs(current), True, mark, "emergency_flatten", Decimal(0), current, 0.0)
-                response, client_id = self._submit_leg(run_id, emergency_book, leg, sequence)
-                self.audit.leg(run_id, sequence, leg, str(response.get("status", "UNKNOWN")), response, client_order_id=client_id)
-            except Exception as exc:
-                self.audit.leg(run_id, sequence, PlanLeg(symbol, "", Decimal(0), True, 0, "emergency_flatten_error", Decimal(0), current, 0.0), "ERROR", {"reason": reason, "error": str(exc)})
+                positions = self.client.positions()
+                instruments = instruments_from_exchange_info(self.client.exchange_info())
+            except BaseException as exc:
+                self.audit.positions(run_id, f"flatten_inventory_failed:{attempt}", {"error": str(exc), "reason": reason})
+                try:
+                    time.sleep(self.policy.flatten_retry_seconds)
+                except BaseException as sleep_exc:
+                    self.audit.positions(run_id, f"flatten_retry_interrupted:{attempt}", {"error": str(sleep_exc)})
+                continue
+            nonzero = [row for row in positions if _decimal(row.get("positionAmt", 0)) != 0]
+            self.audit.positions(run_id, f"emergency_flatten_attempt:{attempt}", positions)
+            if not nonzero:
+                self.audit.positions(run_id, "emergency_flatten_verified", [])
+                return True
+            for row_index, row in enumerate(nonzero):
+                symbol, current = str(row.get("symbol", "")).upper(), _decimal(row.get("positionAmt", 0))
+                sequence = 10_000 + attempt * 1_000 + row_index
+                if symbol not in cancelled:
+                    try:
+                        self.client.cancel_all(symbol)
+                        cancelled.add(symbol)
+                    except BaseException as exc:
+                        self.audit.positions(run_id, f"cancel_all_failed:{symbol}", {"error": str(exc)})
+                instrument = instruments.get(symbol)
+                if not instrument:
+                    self.audit.leg(run_id, sequence, PlanLeg(symbol, "", Decimal(0), True, 0, "flatten_unknown_symbol", Decimal(0), current, 0.0), "ERROR", {"reason": reason})
+                    continue
+                try:
+                    # A MARKET emergency close does not need a live quote.  Depending
+                    # on book_ticker here would make a market-data outage disable the
+                    # one path that must remain available during cleanup.
+                    reference = float(row.get("markPrice", row.get("entryPrice", 0)) or 0)
+                    leg = PlanLeg(symbol, "SELL" if current > 0 else "BUY", abs(current), True, reference, "emergency_flatten", Decimal(0), current, 0.0)
+                    response, client_id = self._submit_leg(run_id, emergency_book, leg, sequence, force_market=True)
+                    self.audit.leg(run_id, sequence, leg, str(response.get("status", "UNKNOWN")), response, client_order_id=client_id)
+                except BaseException as exc:
+                    self.audit.leg(run_id, sequence, PlanLeg(symbol, "", Decimal(0), True, 0, "emergency_flatten_error", Decimal(0), current, 0.0), "ERROR", {"reason": reason, "error": str(exc)})
+            try:
+                time.sleep(self.policy.flatten_retry_seconds)
+            except BaseException as exc:
+                self.audit.positions(run_id, f"flatten_retry_interrupted:{attempt}", {"error": str(exc)})
         try:
-            self.audit.positions(run_id, "emergency_after_flatten", self.client.positions())
-        except Exception as exc:
-            self.audit.positions(run_id, "emergency_after_flatten_failed", {"error": str(exc)})
+            remaining = [row for row in self.client.positions() if _decimal(row.get("positionAmt", 0)) != 0]
+            self.audit.positions(run_id, "emergency_flatten_unresolved", remaining)
+        except BaseException as exc:
+            self.audit.positions(run_id, "emergency_flatten_verify_failed", {"error": str(exc)})
+        return False
 
     def execute(self, book: TargetBook, *, dry_run: bool) -> dict[str, Any]:
         run_id, armed, orders_started = uuid.uuid4().hex, False, False
@@ -382,15 +439,17 @@ class TestnetExecutor:
                     self.audit.leg(run_id, index, leg, "DRY_RUN", client_order_id=self._client_order_id(run_id, book, leg, index))
                 self.audit.finish(run_id, "DRY_RUN", f"{len(legs)} legs, {len(skips)} skips")
                 return {"run_id": run_id, "status": "DRY_RUN", "legs": [asdict(leg) for leg in legs], "skips": skips}
-            if skips:
-                raise RuntimeError("incomplete target; refuse partial portfolio: " + ", ".join(skips))
+            critical_skips = [message for message in skips if not message.endswith("safe_noop")]
+            if critical_skips:
+                raise RuntimeError("incomplete target; refuse partial portfolio: " + ", ".join(critical_skips))
             self.audit.positions(run_id, "before_orders", self.client.positions())
             for symbol, weight in book.weights.items():
                 if abs(weight) > 0:
-                    self.client.set_leverage(symbol, self.policy.leverage)
+                    self._configure_symbol(symbol)
             for index, leg in enumerate(legs):
                 # From this boundary onward an ambiguous POST or interruption may have
                 # mutated positions, so failures must cancel per-symbol and flatten.
+                self.kill_switch.assert_released_for_testnet()
                 orders_started = True
                 response, client_order_id = self._submit_leg(run_id, book, leg, index)
                 status = str(response.get("status", "UNKNOWN"))
@@ -405,6 +464,12 @@ class TestnetExecutor:
             if armed:
                 self.kill_switch.engage(f"automatic emergency stop: {type(exc).__name__}: {exc}")
             if orders_started:
-                self._flatten_all(run_id, f"{type(exc).__name__}: {exc}", set(book.weights))
+                try:
+                    self._flatten_all(run_id, f"{type(exc).__name__}: {exc}", set(book.weights))
+                except BaseException as cleanup_exc:
+                    try:
+                        self.audit.positions(run_id, "emergency_cleanup_crashed", {"error": str(cleanup_exc)})
+                    except BaseException:
+                        pass
             self.audit.finish(run_id, "INTERRUPTED" if isinstance(exc, KeyboardInterrupt) else "FAILED", str(exc))
             raise

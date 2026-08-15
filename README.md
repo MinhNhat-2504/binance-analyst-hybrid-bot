@@ -56,3 +56,9 @@ python run_carry_paper.py --status   # xem đang ở ngày bao nhiêu, lãi lỗ
 ## Lưu ý
 
 Repo phục vụ nghiên cứu và học tập. Crypto rủi ro cao, funding carry vẫn có thể sập khi thị trường squeeze — tự chịu trách nhiệm nếu bật live.
+
+## Kết quả cell carry 8h (15/08/2026): đóng hướng này
+
+Cell 8h đã được đăng ký trước và chạy bằng cùng snapshot, universe, cutoff và chi phí với arm daily. Ở double-holdout replay sau 03/04, 8h đạt Sharpe 1.11, tổng lợi nhuận +7.6%, max drawdown -11.3% và HAC CI của mean [-4.8, +9.3] bps/bar. Arm daily cùng snapshot đạt Sharpe 2.05, +16.5%, drawdown -6.4%. Chi phí 8h cao hơn vì turnover tăng 1.53x; latency thêm 8h lại cải thiện Sharpe từ 1.11 lên 1.50, không ủng hộ giả thuyết có thông tin cần thu hoạch ở scale 8h.
+
+Kết luận: **không promote và không tune tiếp cell 8h**. Đây là kết quả âm có giá trị; route CARRY-7d daily đang paper không bị thay đổi. `permutation_p` trong report là null về liên kết signal–outcome và cố định cost path; `net_profit_block_p` là null riêng cho lợi nhuận ròng sau phí. Runner từ chối chạy nếu funding tail hoặc bar cache bị stale thay vì âm thầm cắt phần cuối.

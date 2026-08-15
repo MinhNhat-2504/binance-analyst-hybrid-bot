@@ -76,3 +76,21 @@ Câu hỏi "chiến lược này có edge không?" đã được trả lời **�
 - Một tiêu chuẩn nghiệm thu rõ ràng cho mọi ý tưởng tương lai
 
 Đó là nền tảng thật. Tín hiệu thì chưa có — nhưng giờ bạn sẽ *biết ngay* khi nào nó có.
+
+---
+
+## Phụ lục 15/08/2026 — giả thuyết rebalance carry mỗi 8h
+
+Một cell mới đã được đăng ký trước để kiểm tra giả thuyết funding settle mỗi 8h có thể làm daily rebalance bỏ phí thông tin. So sánh công bằng trên cùng snapshot và double holdout cho kết quả:
+
+| 03/04→31/07, 10bps/leg | Carry 8h | Carry daily |
+|---|---:|---:|
+| Sharpe | 1.11 | 2.05 |
+| Tổng lợi nhuận | +7.6% | +16.5% |
+| Max drawdown | -11.3% | -6.4% |
+| Cost drag annualized | -14.7% | -9.6% |
+| HAC CI mean (bps/period) | [-4.8, +9.3] | [-9.2, +36.6] |
+
+Turnover 8h chỉ tăng khoảng 1.53x, không phải 3x, vì rank funding-7d gần như không đổi giữa hai settlement. Tuy vậy hiệu quả vẫn thua daily rõ ràng; latency thêm một bar 8h còn làm Sharpe tăng từ 1.11 lên 1.50. Bằng chứng này đóng giả thuyết “có thông tin ở scale 8h cần rebalance nhanh để thu hoạch”. Không chọn biến thể khác, không promote, và không thay đổi route daily đang paper.
+
+Sau report đầu, protocol chỉ được harden theo hai điểm không tune signal: thêm null block-bootstrap một phía cho mean **net sau phí**, và bắt buộc refresh/kiểm tra funding tail để không âm thầm bỏ 40 bar cuối. Null circular-shift cũ vẫn được giữ và ghi đúng nhãn là test signal-association với cost path cố định.

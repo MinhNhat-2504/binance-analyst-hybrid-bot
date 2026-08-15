@@ -53,8 +53,15 @@ class PortfolioMetrics:
     hac_ci_lo_bps: float
     hac_ci_hi_bps: float
     hac_t_stat: float
+    # Association null: does the frozen weight path align with outcomes better
+    # than circular time shifts?  Costs are held fixed by design, so this p-value
+    # is not expected to change when a constant cost assumption changes.
     permutation_p: float
     permutation_n: int
+    # Net-profit null: is the mean return after the stated costs above zero under
+    # a dependence-preserving circular block bootstrap?
+    net_profit_block_p: float
+    net_profit_block_n: int
     price_ann_arithmetic: float
     funding_ann_arithmetic: float
     cost_ann_arithmetic: float
@@ -304,6 +311,41 @@ def circular_shift_p_value(
     return p_value, len(null)
 
 
+def block_bootstrap_net_profit_p_value(
+    values: pd.Series,
+    *,
+    n_boot: int = 999,
+    block_length: int = 21,
+    seed: int = 20260815,
+) -> tuple[float, int]:
+    """One-sided p-value for positive *net* mean with serial dependence retained.
+
+    The circular-shift test above answers a signal-association question and holds the
+    observed cost path fixed.  This second null answers the distinct economic question:
+    whether returns after the declared costs have positive mean.  It resamples centered
+    circular blocks, so raising costs lowers the observed net mean and therefore changes
+    this p-value even when the association p-value is unchanged.
+    """
+
+    x = values.dropna().to_numpy(float)
+    n = len(x)
+    if n < 3 or n_boot <= 0 or block_length < 1:
+        return float("nan"), 0
+    block = min(int(block_length), n)
+    observed = float(x.mean())
+    centered = x - observed
+    rng = np.random.default_rng(seed)
+    starts_per_draw = math.ceil(n / block)
+    offsets = np.arange(block)
+    null_means = np.empty(int(n_boot), dtype=float)
+    for draw in range(int(n_boot)):
+        starts = rng.integers(0, n, size=starts_per_draw)
+        indices = ((starts[:, None] + offsets[None, :]) % n).reshape(-1)[:n]
+        null_means[draw] = centered[indices].mean()
+    p_value = float((np.sum(null_means >= observed) + 1) / (len(null_means) + 1))
+    return p_value, len(null_means)
+
+
 def evaluate_carry(
     weighted: pd.DataFrame,
     *,
@@ -355,6 +397,11 @@ def evaluate_carry(
         n_perm=n_perm,
         min_shift=permutation_min_shift,
     )
+    net_p, net_n = block_bootstrap_net_profit_p_value(
+        r,
+        n_boot=n_perm,
+        block_length=max(1, hac_max_lag + 1),
+    )
     metrics = PortfolioMetrics(
         n_days=len(r),
         mean_bps_day=float(r.mean() * 10_000),
@@ -368,6 +415,8 @@ def evaluate_carry(
         hac_t_stat=float(t_stat),
         permutation_p=p,
         permutation_n=permutation_n,
+        net_profit_block_p=net_p,
+        net_profit_block_n=net_n,
         price_ann_arithmetic=float(components["price"].mean() * periods_per_year),
         funding_ann_arithmetic=float(components["funding"].mean() * periods_per_year),
         cost_ann_arithmetic=float(-components["cost"].mean() * periods_per_year),

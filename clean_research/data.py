@@ -43,11 +43,26 @@ def fetch_funding_rates(symbol: str, days_back: int = 630, *, use_cache: bool = 
 
     CACHE_DIR.mkdir(exist_ok=True)
     cache = CACHE_DIR / f"{symbol}_funding_{days_back}d.parquet"
-    if use_cache and cache.exists():
-        return pd.read_parquet(cache)
-
     now_ms = int(time.time() * 1000)
-    start = now_ms - days_back * 86_400_000
+    window_start = now_ms - days_back * 86_400_000
+    cached = pd.DataFrame(columns=["fundingTime", "fundingRate"])
+    if use_cache and cache.exists():
+        cached = pd.read_parquet(cache)
+        if not cached.empty:
+            cached = cached[["fundingTime", "fundingRate"]].copy()
+            cached["fundingTime"] = pd.to_datetime(cached["fundingTime"], utc=True).dt.tz_localize(None)
+            cached["fundingRate"] = pd.to_numeric(cached["fundingRate"], errors="coerce")
+            cached = cached.dropna().drop_duplicates("fundingTime").sort_values("fundingTime")
+            latest_ms = int(cached["fundingTime"].max().timestamp() * 1000)
+            # A settled 8h stream can legitimately be up to one interval old.  Beyond
+            # 12h the cache is stale and must be incrementally extended.
+            if now_ms - latest_ms <= 12 * 3_600_000:
+                return cached[cached["fundingTime"] >= pd.to_datetime(window_start, unit="ms")].reset_index(drop=True)
+            start = max(window_start, latest_ms + 1)
+        else:
+            start = window_start
+    else:
+        start = window_start
     rows: list[dict] = []
     while start < now_ms:
         query = urllib.parse.urlencode(
@@ -65,12 +80,18 @@ def fetch_funding_rates(symbol: str, days_back: int = 630, *, use_cache: bool = 
             break
         time.sleep(0.15)
 
-    if not rows:
-        return pd.DataFrame(columns=["fundingTime", "fundingRate"])
-    out = pd.DataFrame(rows)
-    out["fundingTime"] = pd.to_datetime(out["fundingTime"], unit="ms")
-    out["fundingRate"] = pd.to_numeric(out["fundingRate"], errors="coerce")
-    out = out[["fundingTime", "fundingRate"]].dropna().drop_duplicates("fundingTime")
+    fresh = pd.DataFrame(rows)
+    if not fresh.empty:
+        fresh["fundingTime"] = pd.to_datetime(fresh["fundingTime"], unit="ms")
+        fresh["fundingRate"] = pd.to_numeric(fresh["fundingRate"], errors="coerce")
+        fresh = fresh[["fundingTime", "fundingRate"]]
+    else:
+        fresh = pd.DataFrame(columns=["fundingTime", "fundingRate"])
+    out = pd.concat([cached, fresh], ignore_index=True)
+    if out.empty:
+        return out
+    out = out.dropna().drop_duplicates("fundingTime")
+    out = out[out["fundingTime"] >= pd.to_datetime(window_start, unit="ms")]
     out = out.sort_values("fundingTime").reset_index(drop=True)
     if use_cache:
         out.to_parquet(cache, index=False)

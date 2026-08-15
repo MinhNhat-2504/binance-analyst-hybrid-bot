@@ -1,5 +1,5 @@
 {
-  "version": "EIGHT_HOUR_CARRY_OOS_V1",
+  "version": "EIGHT_HOUR_CARRY_OOS_V1_1",
   "declared_utc": "2026-08-15T00:00:00Z",
   "purpose": "A new independently evaluated 8-hour CARRY-7d cell. It does not alter the locked daily paper route.",
   "signal": "cross-sectional rank of settled trailing 7-day funding sum known strictly before each completed 8h decision; long bottom 20%, short top 20%. The settlement at the next entry timestamp is deliberately excluded from the signal because it was not known at decision time.",
@@ -25,7 +25,15 @@
   },
   "universe": "fixed discovery-42 and disjoint symbol-holdout-33 from clean_oos_protocol_v1.json",
   "temporal_cutoff_entry_utc": "2026-04-03T00:00:00Z",
-  "statistics": {"periods_per_year": 1095, "hac_lag_bars": 21, "joint_circular_outcome_shifts": "all unique eligible shifts, capped at 999; report actual permutation_n per cell", "minimum_shift_bars": 42},
+  "statistics": {
+    "periods_per_year": 1095,
+    "hac_lag_bars": 21,
+    "joint_circular_outcome_shifts": "signal-association null; all unique eligible shifts, capped at 999; observed turnover/cost path is held fixed, so this p-value is intentionally cost-invariant",
+    "net_profit_null": "one-sided centered circular block bootstrap of the net return mean, 22-bar blocks, capped at 999 draws; this p-value must reflect the declared transaction costs",
+    "minimum_shift_bars": 42
+  },
+  "trailing_data_policy": "Incrementally refresh cached funding and abort if any symbol is missing the latest settled 8h boundary (with a two-minute publication grace) or if common 8h bars are over 16h stale. Never trim a stale tail silently.",
+  "methodology_amendment": "Declared after the first V1 report on 2026-08-15: adds a separately labeled cost-sensitive net-profit null and a stale-tail refusal. It does not change signal, universe, timing, costs, cutoff, or select a variant based on the observed result.",
   "headline": "base next-8h-open, 10bps-per-leg, double-holdout replay is printed first; compare against a daily CARRY-7d arm rebuilt on the same symbols, funding snapshot, cutoff and cost assumptions",
   "inactive_period_policy": "Post-cutoff headline cells must have zero internal inactive bars and abort otherwise. Pre-cutoff context preserves rare inactive bars as cash returns and reports internal_inactive_periods explicitly; they are never silently dropped.",
   "no_tune_rule": "Exactly this one 8h cell is evaluated. No rebalance frequency, quantile, lookback, universe, or cost variant may be selected after observing its result.",

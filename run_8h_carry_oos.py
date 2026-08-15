@@ -46,6 +46,38 @@ def _load(symbols: list[str], days: int) -> tuple[dict[str, pd.DataFrame], dict[
     return bars, funding
 
 
+def _assert_trailing_data_complete(
+    bars: dict[str, pd.DataFrame], funding: dict[str, pd.DataFrame], *, now: pd.Timestamp | None = None
+) -> dict:
+    """Abort instead of silently trimming the newest bars to a stale funding cache."""
+
+    current = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC")
+    current = current.tz_convert("UTC").tz_localize(None) if current.tzinfo is not None else current
+    # Give the just-completed settlement two minutes to appear at the public API.
+    expected_funding = (current - pd.Timedelta(minutes=2)).floor("8h")
+    stale_funding = []
+    latest_funding = {}
+    for symbol, frame in funding.items():
+        latest = pd.to_datetime(frame["fundingTime"], utc=True).dt.tz_localize(None).max() if not frame.empty else pd.NaT
+        latest_funding[symbol] = None if pd.isna(latest) else str(latest)
+        if pd.isna(latest) or latest + pd.Timedelta(seconds=1) < expected_funding:
+            stale_funding.append(symbol)
+    common_bar_end = min(pd.to_datetime(frame["Close time"], utc=True).dt.tz_localize(None).max() for frame in bars.values())
+    if stale_funding:
+        raise RuntimeError(
+            "stale funding tail would silently trim the 8h experiment; refresh failed for: "
+            + ", ".join(stale_funding)
+        )
+    if current - common_bar_end > pd.Timedelta(hours=16):
+        raise RuntimeError(f"8h bar cache is stale: common close {common_bar_end}, now {current}")
+    return {
+        "expected_latest_funding_boundary": str(expected_funding),
+        "minimum_latest_funding_timestamp": min(value for value in latest_funding.values() if value is not None),
+        "maximum_latest_funding_timestamp": max(value for value in latest_funding.values() if value is not None),
+        "trailing_funding_symbols_stale": 0,
+    }
+
+
 def _cells(
     discovery, holdout, *, n_perm: int, periods_per_year: int,
     hac_max_lag: int, permutation_min_shift: int, require_continuous_active: bool,
@@ -108,6 +140,7 @@ def main() -> int:
         raise FileNotFoundError(PROTOCOL)
     all_symbols = DISCOVERY_UNIVERSE + SYMBOL_HOLDOUT_UNIVERSE
     bars, funding = _load(all_symbols, args.days)
+    freshness = _assert_trailing_data_complete(bars, funding)
     common_end = min(pd.to_datetime(frame["Close time"]).max() for frame in bars.values())
     bars = {symbol: frame[pd.to_datetime(frame["Close time"]) <= common_end].copy() for symbol, frame in bars.items()}
     disc_bars = {s: bars[s] for s in DISCOVERY_UNIVERSE}
@@ -134,7 +167,7 @@ def main() -> int:
     report = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "protocol_sha256": _sha(PROTOCOL), "temporal_replay_is_pristine": False,
-        "data": {"common_last_completed_8h_bar": str(common_end), "common_last_completed_daily_bar": str(daily_common_end), "snapshot_sha256": snapshot_hash({**bars, **{f"daily:{s}": frame for s, frame in daily_bars.items()}}, funding), "symbols": len(all_symbols)},
+        "data": {"common_last_completed_8h_bar": str(common_end), "common_last_completed_daily_bar": str(daily_common_end), "snapshot_sha256": snapshot_hash({**bars, **{f"daily:{s}": frame for s, frame in daily_bars.items()}}, funding), "symbols": len(all_symbols), **freshness},
         "headline": _headline(eight_base, daily_base),
         "base_next_8h_open": eight_base,
         "latency_second_next_8h_open": eight_lag,

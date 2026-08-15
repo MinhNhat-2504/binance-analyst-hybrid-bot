@@ -67,6 +67,12 @@ class FakeClient:
     def account(self):
         return {"totalMarginBalance": "100", "availableBalance": "1"}
 
+    def set_margin_type(self, symbol, margin_type):
+        return {"symbol": symbol, "marginType": margin_type}
+
+    def set_leverage(self, symbol, leverage):
+        return {"symbol": symbol, "leverage": leverage}
+
     def book_ticker(self, symbol):
         return {"bidPrice": "99.9", "askPrice": "100.1"}
 
@@ -181,7 +187,7 @@ def test_failed_order_engages_kill_switch_and_attempts_reduce_only_flatten(tmp_p
     kill = KillSwitch(tmp_path / "kill.json")
     kill.release("test")
     audit_path = tmp_path / "audit.sqlite3"
-    executor = TestnetExecutor(client, ExecutionPolicy(max_gross_notional_usd=100, max_order_notional_usd=100, poll_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(audit_path), now=lambda: now)
+    executor = TestnetExecutor(client, ExecutionPolicy(max_gross_notional_usd=100, max_order_notional_usd=100, poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(audit_path), now=lambda: now)
     with pytest.raises(RuntimeError, match="did not fill"):
         executor.execute(book, dry_run=False)
     assert client.cancelled == 1
@@ -270,3 +276,123 @@ def test_portfolio_plan_orders_all_closes_before_any_open(tmp_path) -> None:
     first_open = next(index for index, leg in enumerate(legs) if not leg.reduce_only)
     assert all(leg.reduce_only for leg in legs[:first_open])
     assert all(not leg.reduce_only for leg in legs[first_open:])
+
+
+def test_delta_and_split_chunks_enforce_min_notional(tmp_path) -> None:
+    class EthLikeClient(FakeClient):
+        def exchange_info(self):
+            return {"symbols": [{"symbol": "ETHUSDT", "status": "TRADING", "contractType": "PERPETUAL", "filters": [{"filterType": "LOT_SIZE", "stepSize": "0.001", "minQty": "0.001"}, {"filterType": "PRICE_FILTER", "tickSize": "0.01"}, {"filterType": "MIN_NOTIONAL", "notional": "5"}]}]}
+
+        def positions(self):
+            return [{"symbol": "ETHUSDT", "positionAmt": "0.009"}]
+
+        def book_ticker(self, symbol):
+            return {"bidPrice": "1999", "askPrice": "2001"}
+
+    book = TargetBook("unit-test", "eth-dust", "a" * 64, "2026-08-15T00:00:00Z", "2026-08-15T00:00:00Z", {"ETHUSDT": 1.0}, {"ETHUSDT": 2000}, "unit-test")
+    executor = TestnetExecutor(EthLikeClient(), ExecutionPolicy(max_gross_notional_usd=20, max_order_notional_usd=20), KillSwitch(tmp_path / "kill.json"), ExecutionAudit(tmp_path / "audit.sqlite3"))
+    legs, skips = executor.build_plan(book)
+    assert not legs
+    assert skips == ["ETHUSDT:delta_below_exchange_minimum_safe_noop"]
+
+
+def test_leverage_and_notional_cap_are_mathematically_consistent() -> None:
+    with pytest.raises(ValueError, match="cannot exceed leverage"):
+        ExecutionPolicy(leverage=1, max_notional_to_equity=2)
+
+
+def test_flatten_forces_market_and_verifies_zero_position(tmp_path) -> None:
+    class PartialFailureClient(FakeClient):
+        def __init__(self):
+            self.market_closes = 0
+            self.orders = []
+
+        def positions(self):
+            return [] if self.market_closes >= 2 else [{"symbol": "AAAUSDT", "positionAmt": "1.0"}]
+
+        def order(self, **params):
+            self.orders.append(params)
+            if params["type"] == "MARKET" and params["reduceOnly"] == "true":
+                self.market_closes += 1
+                return {"status": "FILLED", "avgPrice": "100"}
+            return {"status": "EXPIRED"}
+
+        def cancel_all(self, symbol):
+            return {}
+
+    now = datetime(2026, 8, 15, tzinfo=timezone.utc)
+    book = TargetBook("unit-test", "limit-fails", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": -1.0}, {"AAAUSDT": 100}, "unit-test")
+    client, kill = PartialFailureClient(), KillSwitch(tmp_path / "kill.json")
+    kill.release("test")
+    audit_path = tmp_path / "audit.sqlite3"
+    executor = TestnetExecutor(client, ExecutionPolicy(order_style="LIMIT_IOC", max_gross_notional_usd=100, max_order_notional_usd=100, poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(audit_path), now=lambda: now)
+    with pytest.raises(RuntimeError, match="did not fill"):
+        executor.execute(book, dry_run=False)
+    assert client.orders[0]["type"] == "LIMIT"
+    assert client.orders[-1]["type"] == "MARKET"
+    assert client.market_closes == 2
+    phases = [row[0] for row in ExecutionAudit(audit_path).connection.execute("SELECT phase FROM position_snapshots")]
+    assert "emergency_flatten_verified" in phases
+
+
+def test_margin_and_leverage_are_configured_before_first_order(tmp_path) -> None:
+    class OrderedClient(FakeClient):
+        def __init__(self):
+            self.events = []
+
+        def positions(self):
+            return []
+
+        def set_margin_type(self, symbol, margin_type):
+            self.events.append(("margin", symbol, margin_type))
+            return {}
+
+        def set_leverage(self, symbol, leverage):
+            self.events.append(("leverage", symbol, leverage))
+            return {}
+
+        def order(self, **params):
+            self.events.append(("order", params["symbol"], params["type"]))
+            return {"status": "FILLED"}
+
+    now = datetime(2026, 8, 15, tzinfo=timezone.utc)
+    book = TargetBook("unit-test", "configured", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
+    client, kill = OrderedClient(), KillSwitch(tmp_path / "kill.json")
+    kill.release("test")
+    policy = ExecutionPolicy(leverage=3, max_notional_to_equity=1, margin_type="ISOLATED", poll_seconds=0, expected_config_sha256="a" * 64)
+    result = TestnetExecutor(client, policy, kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now).execute(book, dry_run=False)
+    assert result["status"] == "COMPLETE"
+    first_order = next(index for index, event in enumerate(client.events) if event[0] == "order")
+    assert all(event[0] in {"margin", "leverage"} for event in client.events[:first_order])
+    assert ("margin", "AAAUSDT", "ISOLATED") in client.events
+    assert ("leverage", "BBBUSDT", 3) in client.events
+
+
+def test_kill_switch_is_checked_again_before_every_leg(tmp_path) -> None:
+    class MidRunHaltClient(FakeClient):
+        def __init__(self, switch):
+            self.switch = switch
+            self.open_orders = []
+
+        def positions(self):
+            return []
+
+        def order(self, **params):
+            if params["reduceOnly"] == "false":
+                self.open_orders.append(params)
+                if len(self.open_orders) == 1:
+                    self.switch.engage("operator halted between legs")
+            return {"status": "FILLED"}
+
+        def cancel_all(self, symbol):
+            return {}
+
+    now = datetime(2026, 8, 15, tzinfo=timezone.utc)
+    book = TargetBook("unit-test", "mid-run-halt", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
+    kill = KillSwitch(tmp_path / "kill.json")
+    kill.release("test")
+    client = MidRunHaltClient(kill)
+    executor = TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now)
+    with pytest.raises(RuntimeError, match="kill switch is engaged"):
+        executor.execute(book, dry_run=False)
+    assert len(client.open_orders) == 1
