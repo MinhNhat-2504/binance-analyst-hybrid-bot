@@ -33,7 +33,9 @@ def _get_json(url: str, retries: int = 5) -> list[dict]:
     raise RuntimeError(f"funding request failed after {retries} attempts: {last}")
 
 
-def fetch_funding_rates(symbol: str, days_back: int = 630, *, use_cache: bool = True) -> pd.DataFrame:
+def fetch_funding_rates(
+    symbol: str, days_back: int = 630, *, use_cache: bool = True, refresh_stale: bool = True
+) -> pd.DataFrame:
     """Fetch settled funding rates in ascending time order.
 
     Funding settlement time is its availability time.  The ledger builder only joins
@@ -53,6 +55,8 @@ def fetch_funding_rates(symbol: str, days_back: int = 630, *, use_cache: bool = 
             cached["fundingTime"] = pd.to_datetime(cached["fundingTime"], utc=True).dt.tz_localize(None)
             cached["fundingRate"] = pd.to_numeric(cached["fundingRate"], errors="coerce")
             cached = cached.dropna().drop_duplicates("fundingTime").sort_values("fundingTime")
+            if not refresh_stale:
+                return cached[cached["fundingTime"] >= pd.to_datetime(window_start, unit="ms")].reset_index(drop=True)
             latest_ms = int(cached["fundingTime"].max().timestamp() * 1000)
             # A settled 8h stream can legitimately be up to one interval old.  Beyond
             # 12h the cache is stale and must be incrementally extended.
@@ -87,7 +91,8 @@ def fetch_funding_rates(symbol: str, days_back: int = 630, *, use_cache: bool = 
         fresh = fresh[["fundingTime", "fundingRate"]]
     else:
         fresh = pd.DataFrame(columns=["fundingTime", "fundingRate"])
-    out = pd.concat([cached, fresh], ignore_index=True)
+    pieces = [frame for frame in (cached, fresh) if not frame.empty]
+    out = pd.concat(pieces, ignore_index=True) if pieces else pd.DataFrame(columns=["fundingTime", "fundingRate"])
     if out.empty:
         return out
     out = out.dropna().drop_duplicates("fundingTime")

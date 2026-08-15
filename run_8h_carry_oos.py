@@ -42,7 +42,15 @@ def _load(symbols: list[str], days: int) -> tuple[dict[str, pd.DataFrame], dict[
     bars, funding = {}, {}
     for symbol in symbols:
         bars[symbol] = fetch_klines(symbol, "8h", days, use_cache=True)
-        funding[symbol] = fetch_funding_rates(symbol, days + 30, use_cache=True)
+    for symbol in symbols:
+        frame = bars[symbol].sort_values("Close time")
+        latest = frame.iloc[-1] if not frame.empty else None
+        active_tail = bool(
+            latest is not None
+            and float(latest.get("Volume", 0) or 0) > 0
+            and float(latest.get("Quote Asset", 0) or 0) > 0
+        )
+        funding[symbol] = fetch_funding_rates(symbol, days + 30, use_cache=True, refresh_stale=active_tail)
     return bars, funding
 
 
@@ -56,13 +64,31 @@ def _assert_trailing_data_complete(
     # Give the just-completed settlement two minutes to appear at the public API.
     expected_funding = (current - pd.Timedelta(minutes=2)).floor("8h")
     stale_funding = []
+    inactive_symbols = []
+    active_symbols = []
     latest_funding = {}
     for symbol, frame in funding.items():
+        bar_frame = bars[symbol].sort_values("Close time")
+        last_bar = bar_frame.iloc[-1] if not bar_frame.empty else None
+        is_active = bool(
+            last_bar is not None
+            and float(last_bar.get("Volume", 0) or 0) > 0
+            and float(last_bar.get("Quote Asset", 0) or 0) > 0
+        )
+        if not is_active:
+            inactive_symbols.append(symbol)
+            continue
+        active_symbols.append(symbol)
         latest = pd.to_datetime(frame["fundingTime"], utc=True).dt.tz_localize(None).max() if not frame.empty else pd.NaT
         latest_funding[symbol] = None if pd.isna(latest) else str(latest)
         if pd.isna(latest) or latest + pd.Timedelta(seconds=1) < expected_funding:
             stale_funding.append(symbol)
-    common_bar_end = min(pd.to_datetime(frame["Close time"], utc=True).dt.tz_localize(None).max() for frame in bars.values())
+    if not active_symbols:
+        raise RuntimeError("no active symbols at the trailing 8h boundary")
+    common_bar_end = min(
+        pd.to_datetime(bars[symbol]["Close time"], utc=True).dt.tz_localize(None).max()
+        for symbol in active_symbols
+    )
     if stale_funding:
         raise RuntimeError(
             "stale funding tail would silently trim the 8h experiment; refresh failed for: "
@@ -75,6 +101,8 @@ def _assert_trailing_data_complete(
         "minimum_latest_funding_timestamp": min(value for value in latest_funding.values() if value is not None),
         "maximum_latest_funding_timestamp": max(value for value in latest_funding.values() if value is not None),
         "trailing_funding_symbols_stale": 0,
+        "trailing_active_symbols": active_symbols,
+        "trailing_inactive_zombie_symbols": inactive_symbols,
     }
 
 
@@ -141,7 +169,7 @@ def main() -> int:
     all_symbols = DISCOVERY_UNIVERSE + SYMBOL_HOLDOUT_UNIVERSE
     bars, funding = _load(all_symbols, args.days)
     freshness = _assert_trailing_data_complete(bars, funding)
-    common_end = min(pd.to_datetime(frame["Close time"]).max() for frame in bars.values())
+    common_end = min(pd.to_datetime(bars[symbol]["Close time"]).max() for symbol in freshness["trailing_active_symbols"])
     bars = {symbol: frame[pd.to_datetime(frame["Close time"]) <= common_end].copy() for symbol, frame in bars.items()}
     disc_bars = {s: bars[s] for s in DISCOVERY_UNIVERSE}
     disc_funding = {s: funding[s] for s in DISCOVERY_UNIVERSE}

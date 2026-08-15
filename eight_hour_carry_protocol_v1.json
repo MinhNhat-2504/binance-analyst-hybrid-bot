@@ -32,7 +32,7 @@
     "net_profit_null": "one-sided centered circular block bootstrap of the net return mean, 22-bar blocks, capped at 999 draws; this p-value must reflect the declared transaction costs",
     "minimum_shift_bars": 42
   },
-  "trailing_data_policy": "Incrementally refresh cached funding and abort if any symbol is missing the latest settled 8h boundary (with a two-minute publication grace) or if common 8h bars are over 16h stale. Never trim a stale tail silently.",
+  "trailing_data_policy": "Incrementally refresh cached funding and abort if any currently active symbol is missing the latest settled 8h boundary (with a two-minute publication grace) or if common active-symbol 8h bars are over 16h stale. A symbol whose latest completed bar has zero base or quote volume is explicitly reported as an inactive zombie and excluded from trailing freshness coverage. Never trim an active stale tail silently.",
   "methodology_amendment": "Declared after the first V1 report on 2026-08-15: adds a separately labeled cost-sensitive net-profit null and a stale-tail refusal. It does not change signal, universe, timing, costs, cutoff, or select a variant based on the observed result.",
   "headline": "base next-8h-open, 10bps-per-leg, double-holdout replay is printed first; compare against a daily CARRY-7d arm rebuilt on the same symbols, funding snapshot, cutoff and cost assumptions",
   "inactive_period_policy": "Post-cutoff headline cells must have zero internal inactive bars and abort otherwise. Pre-cutoff context preserves rare inactive bars as cash returns and reports internal_inactive_periods explicitly; they are never silently dropped.",

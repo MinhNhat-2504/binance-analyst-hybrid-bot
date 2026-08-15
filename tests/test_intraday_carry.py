@@ -76,10 +76,26 @@ def test_8h_funding_jitter_is_snapped_and_gapped_symbol_is_dropped() -> None:
 
 def test_8h_runner_refuses_silently_stale_funding_tail() -> None:
     now = pd.Timestamp("2026-08-15T12:00:00Z")
-    bars = {"A": pd.DataFrame({"Close time": [pd.Timestamp("2026-08-15 07:59:59.999")]})}
+    bars = {"A": pd.DataFrame({"Close time": [pd.Timestamp("2026-08-15 07:59:59.999")], "Volume": [1.0], "Quote Asset": [100.0]})}
     stale = {"A": pd.DataFrame({"fundingTime": [pd.Timestamp("2026-08-01 08:00:00")], "fundingRate": [0.0]})}
     with pytest.raises(RuntimeError, match="silently trim"):
         _assert_trailing_data_complete(bars, stale, now=now)
     fresh = {"A": pd.DataFrame({"fundingTime": [pd.Timestamp("2026-08-15 07:59:59.999")], "fundingRate": [0.0]})}
     payload = _assert_trailing_data_complete(bars, fresh, now=now)
     assert payload["trailing_funding_symbols_stale"] == 0
+
+
+def test_8h_trailing_guard_reports_zero_volume_zombie_without_trimming_active_symbols() -> None:
+    now = pd.Timestamp("2026-08-15T12:00:00Z")
+    close = pd.Timestamp("2026-08-15 07:59:59.999")
+    bars = {
+        "ACTIVE": pd.DataFrame({"Close time": [close], "Volume": [1.0], "Quote Asset": [100.0]}),
+        "ZOMBIE": pd.DataFrame({"Close time": [close], "Volume": [0.0], "Quote Asset": [0.0]}),
+    }
+    funding = {
+        "ACTIVE": pd.DataFrame({"fundingTime": [pd.Timestamp("2026-08-15 08:00:00")], "fundingRate": [0.0]}),
+        "ZOMBIE": pd.DataFrame({"fundingTime": [pd.Timestamp("2025-01-01 00:00:00")], "fundingRate": [0.0]}),
+    }
+    payload = _assert_trailing_data_complete(bars, funding, now=now)
+    assert payload["trailing_active_symbols"] == ["ACTIVE"]
+    assert payload["trailing_inactive_zombie_symbols"] == ["ZOMBIE"]
