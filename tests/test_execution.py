@@ -11,7 +11,7 @@ import pytest
 from execution.engine import ExecutionAudit, ExecutionPolicy, KillSwitch, TargetMismatchError, TestnetExecutor
 from execution.binance_futures import BinanceAPIError, FuturesREST, LIVE_BASE_URL, TESTNET_BASE_URL
 from execution.targets import TargetBook, load_target_book
-from reconcile_paper_vs_testnet import compare_target_to_positions, select_execution_run
+from reconcile_paper_vs_testnet import compare_contract_to_positions, contract_sha256, select_execution_run
 
 
 def _target_file(tmp_path, weights: dict[str, float]):
@@ -77,6 +77,9 @@ class FakeClient:
     def book_ticker(self, symbol):
         return {"bidPrice": "99.9", "askPrice": "100.1"}
 
+    def open_orders(self, symbol=None):
+        return []
+
 
 class TrackingClient(FakeClient):
     """Exchange fake whose positionRisk changes only when an order actually fills."""
@@ -111,6 +114,10 @@ class TrackingClient(FakeClient):
         return {}
 
 
+def _release(switch: KillSwitch, book: TargetBook, budget: float = 500.0) -> None:
+    switch.release("test", target_id=book.target_id, authorized_budget_usd=budget)
+
+
 def test_target_book_validates_exposure_and_identity(tmp_path) -> None:
     path = _target_file(tmp_path, {"AAAUSDT": 0.5, "BBBUSDT": -0.5})
     book = load_target_book(path)
@@ -129,8 +136,8 @@ def test_kill_switch_fails_closed_and_can_be_released(tmp_path) -> None:
     switch = KillSwitch(tmp_path / "kill.json")
     with pytest.raises(RuntimeError, match="missing"):
         switch.assert_released_for_testnet()
-    switch.release("operator approved testnet rehearsal")
-    switch.assert_released_for_testnet()
+    switch.release("operator approved testnet rehearsal", target_id="target-1", authorized_budget_usd=500)
+    switch.assert_released_for_testnet(expected_target_id="target-1", expected_budget_usd=500)
     switch.engage("rehearsal complete")
     with pytest.raises(RuntimeError, match="engaged"):
         switch.assert_released_for_testnet()
@@ -219,7 +226,7 @@ def test_failed_order_engages_kill_switch_and_attempts_reduce_only_flatten(tmp_p
     book = TargetBook("unit-test", "target-1", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": -1.0}, {}, "unit-test")
     client = RejectingClient()
     kill = KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book, 100)
     audit_path = tmp_path / "audit.sqlite3"
     executor = TestnetExecutor(client, ExecutionPolicy(max_gross_notional_usd=100, max_order_notional_usd=100, poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(audit_path), now=lambda: now)
     with pytest.raises(RuntimeError, match="did not fill"):
@@ -251,7 +258,7 @@ def test_planning_failure_never_cancels_or_flattens(tmp_path) -> None:
     book = TargetBook("unit-test", "planning-fails", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": -1.0}, {}, "unit-test")
     client = PlanningFailureClient()
     kill = KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     executor = TestnetExecutor(client, ExecutionPolicy(expected_config_sha256="a" * 64), kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now)
     with pytest.raises(TimeoutError, match="planning quote"):
         executor.execute(book, dry_run=False)
@@ -286,7 +293,7 @@ def test_limit_quote_failure_before_post_never_flattens_healthy_inventory(tmp_pa
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "pre-post-timeout", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
     client, kill = PrePostQuoteFailure(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
     policy = ExecutionPolicy(order_style="LIMIT_IOC", poll_seconds=0, expected_config_sha256="a" * 64)
     with pytest.raises(TimeoutError, match="pre-POST"):
@@ -299,29 +306,47 @@ def test_complete_path_polls_order_reengages_kill_and_blocks_duplicate_target(tm
     now = datetime(2026, 8, 15, tzinfo=timezone.utc)
     book = TargetBook("unit-test", "complete-once", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100, "BBBUSDT": 100}, "unit-test")
     client, kill = TrackingClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book, 100)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
     executor = TestnetExecutor(client, ExecutionPolicy(max_gross_notional_usd=100, max_order_notional_usd=100, poll_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now)
     assert executor.execute(book, dry_run=False)["status"] == "COMPLETE"
     assert client.inventory == {"AAAUSDT": Decimal("0.5"), "BBBUSDT": Decimal("-0.5")}
     assert client.orders and all("newClientOrderId" in order for order in client.orders)
     assert json.loads(kill.path.read_text(encoding="utf-8"))["trading_enabled"] is False
-    kill.release("duplicate attempt")
+    kill.release("duplicate attempt", target_id=book.target_id, authorized_budget_usd=100)
     with pytest.raises(RuntimeError, match="already completed"):
         executor.execute(book, dry_run=False)
     assert len(client.orders) == 2
 
 
-def test_reconciler_uses_target_weights_not_executor_desired_quantity() -> None:
-    target = TargetBook("unit-test", "target", "a" * 64, "2026-08-15T00:00:00Z", "2026-08-15T00:00:00Z", {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100, "BBBUSDT": 50}, "unit-test")
-    kwargs = dict(expected_gross_notional=100, weight_tolerance=0.001, gross_tolerance_fraction=0.01, gross_tolerance_usd=1, flat_notional_tolerance_usd=1)
-    ok, rows, gross = compare_target_to_positions(target, {"AAAUSDT": Decimal("0.5"), "BBBUSDT": Decimal("-1")}, {}, **kwargs)
+def test_reconciler_uses_exact_contract_vector_and_rejects_right_shape_wrong_scale() -> None:
+    contract = {
+        "version": "EXECUTION_POSITION_CONTRACT_V1",
+        "target_id": "target",
+        "authorized_budget_usd": 100,
+        "effective_gross_budget_usd": 100,
+        "expected_positions": {"AAAUSDT": "0.5", "BBBUSDT": "-1"},
+        "tolerance_budgets": {
+            "AAAUSDT": {"step_size": "0.1", "min_qty": "0.1", "min_notional": "5", "rounding_steps": "0.5", "min_notional_fraction": "0.01"},
+            "BBBUSDT": {"step_size": "0.1", "min_qty": "0.1", "min_notional": "5", "rounding_steps": "0.5", "min_notional_fraction": "0.01"},
+        },
+        "accepted_skips": [], "orphan_symbols": [], "requires_no_open_orders": True,
+    }
+    contract["contract_sha256"] = contract_sha256(contract)
+    verification = {"rows": [
+        {"symbol": "AAAUSDT", "verification_price": 100, "open_orders": 0},
+        {"symbol": "BBBUSDT", "verification_price": 50, "open_orders": 0},
+    ]}
+    ok, rows, gross = compare_contract_to_positions(
+        contract, {"AAAUSDT": Decimal("0.5"), "BBBUSDT": Decimal("-1")}, verification,
+    )
     assert ok and all(row["ok"] for row in rows)
-    assert gross["gross_ok"]
-    bad, _, _ = compare_target_to_positions(target, {"AAAUSDT": Decimal("1"), "BBBUSDT": Decimal("-1")}, {}, **kwargs)
-    assert not bad
-    wrong_scale, _, wrong_gross = compare_target_to_positions(target, {"AAAUSDT": Decimal("5"), "BBBUSDT": Decimal("-10")}, {}, **kwargs)
-    assert not wrong_scale and not wrong_gross["gross_ok"]
+    assert gross["expected_gross_notional"] == 100
+    wrong_scale, wrong_rows, wrong_gross = compare_contract_to_positions(
+        contract, {"AAAUSDT": Decimal("5"), "BBBUSDT": Decimal("-10")}, verification,
+    )
+    assert not wrong_scale and not all(row["ok"] for row in wrong_rows)
+    assert wrong_gross["actual_gross_notional"] == 1000
 
 
 def test_portfolio_plan_orders_all_closes_before_any_open(tmp_path) -> None:
@@ -349,6 +374,8 @@ def test_delta_and_split_chunks_enforce_min_notional(tmp_path) -> None:
     legs, skips = executor.build_plan(book)
     assert not legs
     assert skips == ["ETHUSDT:delta_below_exchange_minimum_safe_noop"]
+    plan = executor.build_plan(book)
+    assert plan.expected_positions == {"ETHUSDT": Decimal("0.009")}
 
 
 def test_leverage_and_notional_cap_are_mathematically_consistent() -> None:
@@ -378,7 +405,7 @@ def test_flatten_forces_market_and_verifies_zero_position(tmp_path) -> None:
     now = datetime(2026, 8, 15, tzinfo=timezone.utc)
     book = TargetBook("unit-test", "limit-fails", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": -1.0}, {"AAAUSDT": 100}, "unit-test")
     client, kill = PartialFailureClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book, 100)
     audit_path = tmp_path / "audit.sqlite3"
     executor = TestnetExecutor(client, ExecutionPolicy(order_style="LIMIT_IOC", max_gross_notional_usd=100, max_order_notional_usd=100, poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(audit_path), now=lambda: now)
     with pytest.raises(RuntimeError, match="did not fill"):
@@ -411,7 +438,7 @@ def test_margin_and_leverage_are_configured_before_first_order(tmp_path) -> None
     now = datetime(2026, 8, 15, tzinfo=timezone.utc)
     book = TargetBook("unit-test", "configured", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
     client, kill = OrderedClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     policy = ExecutionPolicy(leverage=3, max_notional_to_equity=1, margin_type="ISOLATED", poll_seconds=0, expected_config_sha256="a" * 64)
     result = TestnetExecutor(client, policy, kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now).execute(book, dry_run=False)
     assert result["status"] == "COMPLETE"
@@ -425,15 +452,15 @@ def test_kill_switch_is_checked_again_before_every_leg(tmp_path) -> None:
     class MidRunHaltClient(FakeClient):
         def __init__(self, switch):
             self.switch = switch
-            self.open_orders = []
+            self.submitted_orders = []
 
         def positions(self):
             return []
 
         def order(self, **params):
             if params["reduceOnly"] == "false":
-                self.open_orders.append(params)
-                if len(self.open_orders) == 1:
+                self.submitted_orders.append(params)
+                if len(self.submitted_orders) == 1:
                     self.switch.engage("operator halted between legs")
             return {"status": "FILLED"}
 
@@ -443,12 +470,12 @@ def test_kill_switch_is_checked_again_before_every_leg(tmp_path) -> None:
     now = datetime(2026, 8, 15, tzinfo=timezone.utc)
     book = TargetBook("unit-test", "mid-run-halt", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
     kill = KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     client = MidRunHaltClient(kill)
     executor = TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now)
     with pytest.raises(RuntimeError, match="kill switch is engaged"):
         executor.execute(book, dry_run=False)
-    assert len(client.open_orders) == 1
+    assert len(client.submitted_orders) == 1
 
 
 def test_kill_switch_release_has_ttl(tmp_path) -> None:
@@ -479,9 +506,14 @@ def test_orphan_pending_orders_are_cancelled_before_any_leg(tmp_path) -> None:
         def __init__(self):
             super().__init__({"AAAUSDT": Decimal("1")})
             self.events = []
+            self.pending = True
+
+        def open_orders(self, symbol=None):
+            return [{"symbol": "AAAUSDT", "orderId": 99}] if symbol in (None, "AAAUSDT") and self.pending else []
 
         def cancel_all(self, symbol):
             self.events.append(("cancel", symbol))
+            self.pending = False
             return {}
 
         def order(self, **params):
@@ -491,7 +523,7 @@ def test_orphan_pending_orders_are_cancelled_before_any_leg(tmp_path) -> None:
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "orphan-surface", "a" * 64, now.isoformat(), now.isoformat(), {"BBBUSDT": 1.0}, {}, "unit-test")
     client, kill = OrphanClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     result = TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, expected_config_sha256="a" * 64), kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now).execute(book, dry_run=False)
     assert result["status"] == "COMPLETE"
     assert client.events.index(("cancel", "AAAUSDT")) < next(i for i, event in enumerate(client.events) if event[0] == "order")
@@ -509,7 +541,7 @@ def test_final_target_mismatch_never_records_complete_and_is_flattened(tmp_path)
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "wrong-size", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
     client, kill = WrongSizeClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
     executor = TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now)
     with pytest.raises(TargetMismatchError):
@@ -533,7 +565,7 @@ def test_adversarial_client_refusing_flatten_records_unresolved_exposure(tmp_pat
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "unresolved", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100, "BBBUSDT": 100}, "unit-test")
     client, kill = RefusesFlattenClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
     policy = ExecutionPolicy(max_fill_slippage_bps=5, poll_seconds=0, flatten_retry_seconds=0, flatten_max_attempts=2, expected_config_sha256="a" * 64)
     with pytest.raises(RuntimeError, match="slippage"):
@@ -564,7 +596,7 @@ def test_order_poll_is_bounded_and_new_never_completes(tmp_path) -> None:
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "never-filled", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 1.0}, {}, "unit-test")
     client, kill = NeverFilledClient(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     policy = ExecutionPolicy(order_poll_attempts=3, poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64)
     with pytest.raises(RuntimeError, match="did not fill: NEW"):
         TestnetExecutor(client, policy, kill, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now).execute(book, dry_run=False)
@@ -590,7 +622,7 @@ def test_exchange_error_mid_portfolio_forces_verified_flatten(tmp_path) -> None:
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "mid-margin", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
     client, kill = MidPortfolioMarginError(), KillSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
     policy = ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64)
     with pytest.raises(BinanceAPIError, match="insufficient margin"):
@@ -609,7 +641,7 @@ def test_kill_switch_write_failure_cannot_skip_flatten_or_audit(tmp_path) -> Non
     book = TargetBook("unit-test", "engage-fails", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 1.0}, {}, "unit-test")
     client = TrackingClient()
     kill = BrokenEngageSwitch(tmp_path / "kill.json")
-    kill.release("test")
+    _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
     with pytest.raises(RuntimeError, match="could not re-engage"):
         TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now).execute(book, dry_run=False)
@@ -635,3 +667,108 @@ def test_reconciler_default_ignores_newer_failed_attempt() -> None:
     conn.execute("INSERT INTO execution_runs VALUES ('failed','2026-08-15T01:00:00Z','', 'target','testnet',0,'FAILED','duplicate blocked')")
     assert select_execution_run(conn, "target")[0] == "complete"
     assert select_execution_run(conn, "target", "failed")[0] == "failed"
+
+
+def test_release_is_bound_to_exact_target_and_operator_budget(tmp_path) -> None:
+    switch = KillSwitch(tmp_path / "kill.json")
+    switch.release("approved", target_id="target-a", authorized_budget_usd=500)
+    with pytest.raises(RuntimeError, match="different target_id"):
+        switch.assert_released_for_testnet(expected_target_id="target-b", expected_budget_usd=500)
+    with pytest.raises(RuntimeError, match="budget does not match"):
+        switch.assert_released_for_testnet(expected_target_id="target-a", expected_budget_usd=5000)
+
+
+def test_budget_typo_is_rejected_before_plan_or_order(tmp_path) -> None:
+    class NoMutationClient(FakeClient):
+        def __init__(self):
+            self.synced = 0
+            self.orders = 0
+
+        def sync_time(self):
+            self.synced += 1
+
+        def order(self, **params):
+            self.orders += 1
+
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "budget-bound", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 1.0}, {}, "unit-test")
+    client, switch = NoMutationClient(), KillSwitch(tmp_path / "kill.json")
+    switch.release("approved", target_id=book.target_id, authorized_budget_usd=500)
+    executor = TestnetExecutor(client, ExecutionPolicy(max_gross_notional_usd=5000, expected_config_sha256="a" * 64), switch, ExecutionAudit(tmp_path / "audit.sqlite3"), now=lambda: now)
+    with pytest.raises(RuntimeError, match="budget does not match"):
+        executor.execute(book, dry_run=False)
+    assert client.synced == 0 and client.orders == 0
+
+
+def test_ambiguous_post_success_is_deduped_and_contract_completes(tmp_path) -> None:
+    class AmbiguousAcceptedClient(TrackingClient):
+        def __init__(self):
+            super().__init__()
+            self.post_calls = 0
+            self.accepted = {}
+
+        def order(self, **params):
+            self.post_calls += 1
+            response = super().order(**params)
+            self.accepted[params["newClientOrderId"]] = {"status": "FILLED", "avgPrice": "100"}
+            raise BinanceAPIError("POST timeout", status_code=None)
+
+        def get_order_by_client_id(self, symbol, client_order_id):
+            return self.accepted[client_order_id]
+
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "ambiguous-success", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 1.0}, {}, "unit-test")
+    client, switch = AmbiguousAcceptedClient(), KillSwitch(tmp_path / "kill.json")
+    _release(switch, book, 100)
+    audit = ExecutionAudit(tmp_path / "audit.sqlite3")
+    policy = ExecutionPolicy(max_gross_notional_usd=100, poll_seconds=0, expected_config_sha256="a" * 64)
+    result = TestnetExecutor(client, policy, switch, audit, now=lambda: now).execute(book, dry_run=False)
+    assert result["status"] == "COMPLETE" and client.post_calls == 1
+    contract_row = audit.connection.execute("SELECT positions_json FROM position_snapshots WHERE phase='execution_contract'").fetchone()
+    contract = json.loads(contract_row[0])
+    verification_row = audit.connection.execute("SELECT positions_json FROM position_snapshots WHERE phase='target_verification'").fetchone()
+    verification = json.loads(verification_row[0])
+    ok, rows, _ = compare_contract_to_positions(contract, {"AAAUSDT": Decimal("1")}, verification)
+    assert contract["contract_sha256"] == contract_sha256(contract)
+    assert ok and all(row["ok"] for row in rows)
+
+
+def test_verification_quote_timeout_engages_but_does_not_flatten(tmp_path) -> None:
+    class VerificationTimeoutClient(TrackingClient):
+        def __init__(self):
+            super().__init__()
+            self.quote_calls = 0
+            self.cancelled = 0
+
+        def book_ticker(self, symbol):
+            self.quote_calls += 1
+            if self.quote_calls > 2:
+                raise TimeoutError("verification quote timeout")
+            return super().book_ticker(symbol)
+
+        def cancel_all(self, symbol):
+            self.cancelled += 1
+            return {}
+
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "verify-timeout", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {}, "unit-test")
+    client, switch = VerificationTimeoutClient(), KillSwitch(tmp_path / "kill.json")
+    _release(switch, book)
+    audit = ExecutionAudit(tmp_path / "audit.sqlite3")
+    with pytest.raises(RuntimeError, match="verification snapshot unavailable"):
+        TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, expected_config_sha256="a" * 64), switch, audit, now=lambda: now).execute(book, dry_run=False)
+    assert client.inventory == {"AAAUSDT": Decimal("0.5"), "BBBUSDT": Decimal("-0.5")}
+    assert client.cancelled == 0
+    assert audit.connection.execute("SELECT status FROM execution_runs WHERE target_id='verify-timeout'").fetchone()[0] == "VERIFICATION_UNAVAILABLE"
+
+
+def test_open_orders_uses_signed_usdm_endpoint() -> None:
+    client = FuturesREST("testnet")
+    calls = []
+    client.signed = lambda method, path, params=None: calls.append((method, path, params)) or []
+    assert client.open_orders("btcusdt") == []
+    assert client.open_orders() == []
+    assert calls == [
+        ("GET", "/fapi/v1/openOrders", {"symbol": "BTCUSDT"}),
+        ("GET", "/fapi/v1/openOrders", {}),
+    ]

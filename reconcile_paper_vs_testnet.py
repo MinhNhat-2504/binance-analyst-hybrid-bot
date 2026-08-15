@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 from decimal import Decimal
@@ -34,36 +35,51 @@ def select_execution_run(conn: sqlite3.Connection, target_id: str, run_id: str |
     ).fetchone()
 
 
-def compare_target_to_positions(
-    target, actual: dict[str, Decimal], fallback_prices: dict[str, float], *,
-    expected_gross_notional: float, weight_tolerance: float,
-    gross_tolerance_fraction: float, gross_tolerance_usd: float,
-    flat_notional_tolerance_usd: float,
+def contract_sha256(contract: dict) -> str:
+    core = {key: value for key, value in contract.items() if key != "contract_sha256"}
+    return hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def compare_contract_to_positions(
+    contract: dict, actual: dict[str, Decimal], verification: dict
 ) -> tuple[bool, list[dict], dict]:
-    """Compare independent target shape *and absolute USD scale*."""
-    symbols = sorted(set(target.weights) | {symbol for symbol, qty in actual.items() if qty != 0})
-    prices = {symbol: float(target.reference_prices.get(symbol) or fallback_prices.get(symbol) or 0) for symbol in symbols}
-    actual_gross = sum(abs(float(actual.get(symbol, 0)) * prices[symbol]) for symbol in symbols)
-    target_gross = float(expected_gross_notional)
-    gross_tolerance = max(float(gross_tolerance_usd), target_gross * float(gross_tolerance_fraction))
-    gross_summary = {
-        "expected_gross_notional": target_gross,
-        "actual_gross_notional": actual_gross,
-        "gross_error_usd": abs(actual_gross - target_gross),
-        "gross_tolerance_usd": gross_tolerance,
-        "gross_ok": abs(actual_gross - target_gross) <= gross_tolerance,
-    }
+    """Recompute the exact rounded-vector contract without plan-leg internals."""
+
+    expected = {symbol: Decimal(str(quantity)) for symbol, quantity in contract.get("expected_positions", {}).items()}
+    tolerance_budgets = contract.get("tolerance_budgets", {})
+    verification_rows = {str(row.get("symbol", "")).upper(): row for row in verification.get("rows", [])}
+    symbols = sorted(set(expected) | {symbol for symbol, quantity in actual.items() if quantity != 0})
     rows = []
     for symbol in symbols:
-        target_weight = float(target.weights.get(symbol, 0.0))
+        source = verification_rows.get(symbol, {})
+        price = Decimal(str(source.get("verification_price", 0) or 0))
+        budget = tolerance_budgets.get(symbol, {})
+        step = Decimal(str(budget.get("step_size", 0)))
+        rounding_steps = Decimal(str(budget.get("rounding_steps", 0)))
+        min_notional = Decimal(str(budget.get("min_notional", 0)))
+        min_notional_fraction = Decimal(str(budget.get("min_notional_fraction", 0)))
+        tolerance = max(
+            step * rounding_steps,
+            (min_notional / price) * min_notional_fraction,
+        ) if price > 0 else Decimal("0")
+        expected_quantity = expected.get(symbol, Decimal("0"))
         actual_quantity = actual.get(symbol, Decimal("0"))
-        actual_weight = float(actual_quantity) * prices[symbol] / actual_gross if actual_gross > 0 and prices[symbol] > 0 else None
-        weight_error = abs(actual_weight - target_weight) if actual_weight is not None else None
-        ok = weight_error is not None and weight_error <= weight_tolerance
-        if target_weight == 0.0:
-            ok = abs(float(actual_quantity) * prices[symbol]) <= flat_notional_tolerance_usd
-        rows.append({"symbol": symbol, "reference_price": prices[symbol] or None, "target_weight": target_weight, "actual_weight": actual_weight, "weight_error": weight_error, "actual_quantity": str(actual_quantity), "actual_notional": float(actual_quantity) * prices[symbol], "ok": ok})
-    return bool(rows) and gross_summary["gross_ok"] and all(row["ok"] for row in rows), rows, gross_summary
+        error = abs(actual_quantity - expected_quantity)
+        open_orders = int(source.get("open_orders", 0) or 0)
+        rows.append({
+            "symbol": symbol, "verification_price": float(price),
+            "expected_quantity": str(expected_quantity), "actual_quantity": str(actual_quantity),
+            "quantity_error": str(error), "quantity_tolerance": str(tolerance),
+            "expected_notional": float(expected_quantity * price),
+            "actual_notional": float(actual_quantity * price), "open_orders": open_orders,
+            "ok": price > 0 and error <= tolerance and open_orders == 0,
+        })
+    gross = {
+        "expected_gross_notional": sum(abs(row["expected_notional"]) for row in rows),
+        "actual_gross_notional": sum(abs(row["actual_notional"]) for row in rows),
+    }
+    gross["gross_error_usd"] = abs(gross["actual_gross_notional"] - gross["expected_gross_notional"])
+    return bool(rows) and all(row["ok"] for row in rows), rows, gross
 
 
 def main() -> int:
@@ -71,10 +87,6 @@ def main() -> int:
     parser.add_argument("--targets", default=str(DEFAULT_TARGET))
     parser.add_argument("--audit", default=str(DEFAULT_AUDIT))
     parser.add_argument("--run-id", help="default: latest run for the target")
-    parser.add_argument("--weight-tolerance", type=float, default=0.01)
-    parser.add_argument("--gross-tolerance-fraction", type=float, default=0.03)
-    parser.add_argument("--gross-tolerance-usd", type=float, default=5.0)
-    parser.add_argument("--flat-notional-tolerance-usd", type=float, default=1.0)
     args = parser.parse_args()
     target = load_target_book(args.targets)
     if not Path(args.audit).exists():
@@ -89,30 +101,29 @@ def main() -> int:
     legs = conn.execute("SELECT symbol,side,quantity,reduce_only,reference_price,reason,status,order_id,avg_fill_price,fill_slippage_bps,client_order_id,desired_quantity,current_quantity,target_weight FROM execution_legs WHERE run_id=? ORDER BY sequence", (run_id,)).fetchall()
     snapshots = conn.execute("SELECT phase,captured_utc,positions_json FROM position_snapshots WHERE run_id=? ORDER BY captured_utc", (run_id,)).fetchall()
     final_snapshot = next((item for item in reversed(snapshots) if item[0] == "after_orders"), None)
+    contract_snapshot = next((item for item in reversed(snapshots) if item[0] == "execution_contract"), None)
     verification_snapshot = next((item for item in reversed(snapshots) if item[0] == "target_verification"), None)
     actual = _position_map(final_snapshot[2]) if final_snapshot else {}
-    fallback_prices: dict[str, float] = {}
-    for leg in legs:
-        symbol, ref = leg[0], float(leg[4] or 0)
-        if symbol:
-            fallback_prices[symbol] = ref
+    contract = json.loads(contract_snapshot[2]) if contract_snapshot else {}
     verification = json.loads(verification_snapshot[2]) if verification_snapshot else {}
-    for item in verification.get("rows", []):
-        if item.get("symbol") and item.get("price"):
-            fallback_prices[str(item["symbol"]).upper()] = float(item["price"])
-    expected_gross = float(verification.get("expected_gross_notional", 0) or 0)
-    weights_ok, comparison, gross = compare_target_to_positions(
-        target, actual, fallback_prices, expected_gross_notional=expected_gross,
-        weight_tolerance=args.weight_tolerance,
-        gross_tolerance_fraction=args.gross_tolerance_fraction,
-        gross_tolerance_usd=args.gross_tolerance_usd,
-        flat_notional_tolerance_usd=args.flat_notional_tolerance_usd,
-    )
-    ok = bool(final_snapshot) and bool(verification_snapshot) and expected_gross > 0 and row[5] == "COMPLETE" and not bool(row[4]) and weights_ok
+    contract_hash_ok = bool(contract) and contract.get("contract_sha256") == contract_sha256(contract)
+    binding_ok = contract.get("target_id") == target.target_id and verification.get("contract_sha256") == contract.get("contract_sha256")
+    try:
+        authorized_budget = float(contract["authorized_budget_usd"])
+        effective_budget = float(contract["effective_gross_budget_usd"])
+        authorization_ok = authorized_budget > 0 and 0 < effective_budget <= authorized_budget
+    except (KeyError, TypeError, ValueError):
+        authorization_ok = False
+    vector_ok, comparison, gross = compare_contract_to_positions(contract, actual, verification) if contract else (False, [], {})
+    ok = bool(final_snapshot) and bool(contract_snapshot) and bool(verification_snapshot) and row[5] == "COMPLETE" and not bool(row[4]) and contract_hash_ok and binding_ok and authorization_ok and vector_ok
     report = {
         "target": {"target_id": target.target_id, "strategy": target.strategy, "gross": target.gross, "net": target.net},
         "run": dict(zip(("run_id", "started_utc", "finished_utc", "environment", "dry_run", "status", "message"), row)),
         "reconciliation_pass": ok,
+        "contract": contract,
+        "contract_hash_ok": contract_hash_ok,
+        "target_binding_ok": binding_ok,
+        "authorization_binding_ok": authorization_ok,
         "gross_reconciliation": gross,
         "comparison": comparison,
         "fills": [dict(zip(("symbol", "side", "quantity", "reduce_only", "reference_price", "reason", "status", "order_id", "avg_fill_price", "fill_slippage_bps", "client_order_id", "desired_quantity", "current_quantity", "target_weight"), leg)) for leg in legs],

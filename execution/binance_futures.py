@@ -156,6 +156,13 @@ class FuturesREST:
     def get_order_by_client_id(self, symbol: str, client_order_id: str) -> dict[str, Any]:
         return self.signed("GET", "/fapi/v1/order", {"symbol": symbol, "origClientOrderId": client_order_id})
 
+    def open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
+        params = {"symbol": symbol.upper()} if symbol else {}
+        payload = self.signed("GET", "/fapi/v1/openOrders", params)
+        if not isinstance(payload, list):
+            raise BinanceAPIError("openOrders returned a non-list payload", payload=payload)
+        return payload
+
     def cancel_order(self, symbol: str, order_id: int) -> dict[str, Any]:
         return self.signed("DELETE", "/fapi/v1/order", {"symbol": symbol, "orderId": order_id})
 

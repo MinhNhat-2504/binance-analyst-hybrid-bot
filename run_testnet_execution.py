@@ -27,6 +27,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--targets", default=str(ROOT / "execution" / "carry_targets_latest.json"))
     parser.add_argument("--budget-usd", type=float, default=500.0)
+    parser.add_argument("--authorize-budget-usd", type=float, help="required only when releasing; binds operator approval to an exact budget")
     parser.add_argument("--order-style", choices=["MARKET", "LIMIT_IOC"], default="MARKET")
     parser.add_argument("--execute", action="store_true", help="submit TESTNET orders; default is dry-run")
     parser.add_argument("--confirm-testnet", default="")
@@ -36,10 +37,6 @@ def main() -> int:
     args = parser.parse_args()
 
     kill = KillSwitch(KILL)
-    if args.release_kill_switch:
-        kill.release(args.release_kill_switch)
-        print(f"testnet kill switch released: {KILL}")
-        return 0
     if args.engage_kill_switch:
         kill.engage(args.engage_kill_switch)
         print(f"testnet kill switch engaged: {KILL}")
@@ -63,10 +60,19 @@ def main() -> int:
             "python -B export_carry_targets.py"
         )
     book = load_target_book(target_path)
+    if args.release_kill_switch:
+        if args.authorize_budget_usd is None or args.authorize_budget_usd <= 0:
+            raise RuntimeError("release requires --authorize-budget-usd with the operator-approved amount")
+        kill.release(
+            args.release_kill_switch, target_id=book.target_id,
+            authorized_budget_usd=args.authorize_budget_usd,
+        )
+        print(f"testnet kill switch released for target={book.target_id} budget=${args.authorize_budget_usd:.2f}: {KILL}")
+        return 0
     if not args.execute:
         print("DRY RUN ONLY: no network request and no order will be placed.")
         print(json.dumps({"target_id": book.target_id, "strategy": book.strategy, "gross": book.gross, "net": book.net, "positions": len(book.weights)}, indent=2))
-        print("To test execution: release the testnet kill switch, then use --execute --confirm-testnet I_ACCEPT_TESTNET_ORDERS")
+        print("To test execution: release with --release-kill-switch REASON --authorize-budget-usd AMOUNT for this exact target, then use --execute --budget-usd AMOUNT --confirm-testnet I_ACCEPT_TESTNET_ORDERS")
         return 0
     if args.confirm_testnet != "I_ACCEPT_TESTNET_ORDERS":
         raise RuntimeError("refusing order submission without --confirm-testnet I_ACCEPT_TESTNET_ORDERS")

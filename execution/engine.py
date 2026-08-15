@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import sqlite3
 import time
@@ -43,10 +44,6 @@ class ExecutionPolicy:
     order_poll_attempts: int = 5
     kill_switch_release_ttl_seconds: int = 15 * 60
     max_fill_slippage_bps: float = 50.0
-    position_weight_tolerance: float = 0.02
-    gross_notional_tolerance_fraction: float = 0.03
-    gross_notional_tolerance_usd: float = 5.0
-    flat_position_notional_tolerance_usd: float = 1.0
     expected_config_sha256: str = ""
     order_style: str = "MARKET"
     limit_buffer_bps: float = 3.0
@@ -75,10 +72,6 @@ class ExecutionPolicy:
             raise ValueError("kill switch release TTL must be positive")
         if self.max_fill_slippage_bps < 0:
             raise ValueError("max fill slippage cannot be negative")
-        if not 0 <= self.position_weight_tolerance < 0.5:
-            raise ValueError("position weight tolerance is invalid")
-        if self.gross_notional_tolerance_fraction < 0 or self.gross_notional_tolerance_usd < 0 or self.flat_position_notional_tolerance_usd < 0:
-            raise ValueError("position notional tolerances cannot be negative")
         if self.expected_config_sha256 and (
             len(self.expected_config_sha256) != 64
             or any(char not in "0123456789abcdef" for char in self.expected_config_sha256.lower())
@@ -110,6 +103,26 @@ class PlanLeg:
     target_weight: float
 
 
+@dataclass
+class ExecutionPlan:
+    legs: list[PlanLeg]
+    skips: list[str]
+    expected_positions: dict[str, Decimal]
+    tolerance_budgets: dict[str, dict[str, str]]
+    gross_budget: float
+    orphan_symbols: list[str]
+
+    def __iter__(self):
+        # Keep the existing direct plan-inspection API ergonomic while exposing the
+        # authoritative post-trade vector to execution and reconciliation.
+        yield self.legs
+        yield self.skips
+
+
+class VerificationUnavailableError(RuntimeError):
+    """The exchange could not provide a trustworthy verification snapshot."""
+
+
 class TargetMismatchError(RuntimeError):
     """Orders returned, but the independently observed account missed the target."""
 
@@ -121,13 +134,20 @@ class KillSwitch:
         self.path = Path(path)
 
     def assert_released_for_testnet(
-        self, *, max_age_seconds: int | None = None, now: datetime | None = None
-    ) -> None:
+        self, *, max_age_seconds: int | None = None, now: datetime | None = None,
+        expected_target_id: str | None = None, expected_budget_usd: float | None = None,
+    ) -> dict[str, Any]:
         if not self.path.exists():
             raise RuntimeError(f"kill switch missing: {self.path}; execution remains halted")
         payload = json.loads(self.path.read_text(encoding="utf-8"))
         if payload.get("environment") != "testnet" or payload.get("trading_enabled") is not True:
             raise RuntimeError(f"kill switch is engaged: {payload.get('reason', 'no reason')}")
+        if expected_target_id is not None and payload.get("authorized_target_id") != expected_target_id:
+            raise RuntimeError("kill switch release is bound to a different target_id")
+        if expected_budget_usd is not None:
+            approved = payload.get("authorized_budget_usd")
+            if approved is None or not math.isclose(float(approved), float(expected_budget_usd), rel_tol=0, abs_tol=1e-9):
+                raise RuntimeError("kill switch release budget does not match execution budget")
         if max_age_seconds is not None:
             released = payload.get("released_utc")
             if not released:
@@ -135,16 +155,23 @@ class KillSwitch:
             age = ((now or datetime.now(timezone.utc)) - parse_utc(str(released))).total_seconds()
             if age < 0 or age > max_age_seconds:
                 raise RuntimeError(f"kill switch release expired: age {age:.1f}s > TTL {max_age_seconds}s")
+        return payload
 
     def engage(self, reason: str) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._atomic_write({"environment": "testnet", "trading_enabled": False, "reason": str(reason), "engaged_utc": utc_now()})
 
-    def release(self, reason: str) -> None:
+    def release(self, reason: str, *, target_id: str, authorized_budget_usd: float) -> None:
         if not reason.strip():
             raise ValueError("a human-readable release reason is required")
+        if not target_id.strip() or authorized_budget_usd <= 0:
+            raise ValueError("release requires a target_id and positive authorized budget")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._atomic_write({"environment": "testnet", "trading_enabled": True, "reason": str(reason), "released_utc": utc_now()})
+        self._atomic_write({
+            "environment": "testnet", "trading_enabled": True, "reason": str(reason),
+            "authorized_target_id": target_id, "authorized_budget_usd": float(authorized_budget_usd),
+            "released_utc": utc_now(),
+        })
 
     def _atomic_write(self, payload: dict[str, Any]) -> None:
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -309,7 +336,7 @@ class TestnetExecutor:
                 raise RuntimeError(f"{symbol}: order chunk is below exchange minimum")
             legs.append(PlanLeg(symbol, side, chunk, reduce_only, reference, reason, desired, current, target_weight))
 
-    def build_plan(self, book: TargetBook, *, gross_budget: float | None = None) -> tuple[list[PlanLeg], list[str]]:
+    def build_plan(self, book: TargetBook, *, gross_budget: float | None = None) -> ExecutionPlan:
         self.client.sync_time()
         if self.client.position_mode():
             raise RuntimeError("dualSidePosition is enabled; one-way position mode is required")
@@ -322,17 +349,27 @@ class TestnetExecutor:
             raise RuntimeError(f"target has {len(active)} positions > configured max {self.policy.max_positions}")
         legs: list[PlanLeg] = []
         skips: list[str] = []
+        expected_positions: dict[str, Decimal] = dict(positions)
+        tolerance_budgets: dict[str, dict[str, str]] = {}
+        orphan_symbols: list[str] = []
         for symbol in sorted(set(active) | set(positions)):
             weight, current = active.get(symbol, 0.0), positions.get(symbol, Decimal("0"))
             instrument = instruments.get(symbol)
             if not instrument:
                 skips.append(f"{symbol}:{'uncloseable_position' if current else 'not_trading_or_unknown'}")
                 continue
+            tolerance_budgets[symbol] = {
+                "step_size": str(instrument.step_size), "min_qty": str(instrument.min_qty),
+                "min_notional": str(instrument.min_notional),
+                "rounding_steps": "0.5", "min_notional_fraction": "0.01",
+            }
             ticker = self.client.book_ticker(symbol)
             bid, ask = float(ticker["bidPrice"]), float(ticker["askPrice"])
             mark, reference = (bid + ask) / 2.0, float(book.reference_prices.get(symbol) or (bid + ask) / 2.0)
             if not weight:
                 self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="SELL" if current > 0 else "BUY", quantity=abs(current), reduce_only=True, reference=reference, reason="close_orphan", desired=Decimal("0"), current=current, target_weight=0.0)
+                expected_positions[symbol] = Decimal("0")
+                orphan_symbols.append(symbol)
                 continue
             desired_abs = _round_step(_decimal(abs(weight) * gross_budget / mark), instrument.step_size)
             if desired_abs < instrument.min_qty or desired_abs * _decimal(mark) < instrument.min_notional:
@@ -344,10 +381,12 @@ class TestnetExecutor:
             if current and current * desired < 0:
                 self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="SELL" if current > 0 else "BUY", quantity=abs(current), reduce_only=True, reference=reference, reason="close_before_flip", desired=desired, current=current, target_weight=weight)
                 self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="BUY" if desired > 0 else "SELL", quantity=abs(desired), reduce_only=False, reference=reference, reason="open_after_flip", desired=desired, current=Decimal("0"), target_weight=weight)
+                expected_positions[symbol] = desired
             else:
                 delta = desired - current
                 if abs(delta) >= instrument.min_qty and abs(delta) * _decimal(mark) >= instrument.min_notional:
                     self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="BUY" if delta > 0 else "SELL", quantity=abs(delta), reduce_only=current != 0 and current * delta < 0, reference=reference, reason="rebalance", desired=desired, current=current, target_weight=weight)
+                    expected_positions[symbol] = desired
                 elif delta != 0:
                     skips.append(f"{symbol}:delta_below_exchange_minimum_safe_noop")
         if any("uncloseable_position" in message for message in skips):
@@ -357,7 +396,12 @@ class TestnetExecutor:
         # Across the whole portfolio every reduce-only/closing leg must complete before
         # any opening leg.  Symbol sort alone can interleave opens ahead of later closes.
         legs.sort(key=lambda leg: (0 if leg.reduce_only else 1, leg.symbol, leg.reason))
-        return legs, skips
+        return ExecutionPlan(
+            legs=legs, skips=skips,
+            expected_positions={symbol: quantity for symbol, quantity in sorted(expected_positions.items())},
+            tolerance_budgets=tolerance_budgets, gross_budget=float(gross_budget),
+            orphan_symbols=sorted(orphan_symbols),
+        )
 
     @staticmethod
     def _client_order_id(run_id: str, book: TargetBook, leg: PlanLeg, sequence: int, prefix: str = "carry") -> str:
@@ -419,54 +463,81 @@ class TestnetExecutor:
                 pass
             return False
 
-    def _verify_target_positions(
-        self, book: TargetBook, positions: list[dict[str, Any]], expected_gross_notional: float
+    @staticmethod
+    def _contract_sha(payload: dict[str, Any]) -> str:
+        core = {key: value for key, value in payload.items() if key != "contract_sha256"}
+        return hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def _execution_contract(
+        self, book: TargetBook, plan: ExecutionPlan, approval: dict[str, Any]
+    ) -> dict[str, Any]:
+        payload = {
+            "version": "EXECUTION_POSITION_CONTRACT_V1",
+            "target_id": book.target_id,
+            "authorized_budget_usd": float(approval["authorized_budget_usd"]),
+            "effective_gross_budget_usd": plan.gross_budget,
+            "expected_positions": {symbol: str(quantity) for symbol, quantity in plan.expected_positions.items()},
+            # The tolerance rule is part of the hashed contract.  Its min-notional
+            # component is converted to quantity only once verification prices exist.
+            "tolerance_budgets": plan.tolerance_budgets,
+            "accepted_skips": [item for item in plan.skips if item.endswith("safe_noop")],
+            "orphan_symbols": plan.orphan_symbols,
+            "requires_no_open_orders": True,
+        }
+        payload["contract_sha256"] = self._contract_sha(payload)
+        return payload
+
+    def _verify_execution_plan(
+        self, plan: ExecutionPlan, positions: list[dict[str, Any]]
     ) -> tuple[bool, dict[str, Any]]:
-        """Independently verify the exchange inventory, including absolute scale."""
+        """Compare the account with the exact rounded vector emitted by build_plan."""
 
         actual = {
             str(row.get("symbol", "")).upper(): _decimal(row.get("positionAmt", 0))
-            for row in positions
-            if str(row.get("symbol", "")).strip()
+            for row in positions if str(row.get("symbol", "")).strip()
         }
-        symbols = sorted(set(book.weights) | {symbol for symbol, qty in actual.items() if qty != 0})
-        prices: dict[str, float] = {}
-        for symbol in symbols:
-            ticker = self.client.book_ticker(symbol)
-            prices[symbol] = (float(ticker["bidPrice"]) + float(ticker["askPrice"])) / 2.0
-        actual_gross = sum(abs(float(actual.get(symbol, 0))) * prices[symbol] for symbol in symbols)
-        target_gross = float(expected_gross_notional) * float(book.gross)
-        gross_tolerance = max(
-            self.policy.gross_notional_tolerance_usd,
-            target_gross * self.policy.gross_notional_tolerance_fraction,
-        )
-        gross_error = abs(actual_gross - target_gross)
+        symbols = sorted(set(plan.expected_positions) | {symbol for symbol, qty in actual.items() if qty != 0})
+        try:
+            prices = {}
+            open_orders = {}
+            for symbol in symbols:
+                ticker = self.client.book_ticker(symbol)
+                prices[symbol] = (float(ticker["bidPrice"]) + float(ticker["askPrice"])) / 2.0
+                open_orders[symbol] = self.client.open_orders(symbol)
+        except BaseException as exc:
+            raise VerificationUnavailableError(f"verification snapshot unavailable: {exc}") from exc
         rows = []
         for symbol in symbols:
-            target_weight = float(book.weights.get(symbol, 0.0))
-            quantity = actual.get(symbol, Decimal("0"))
-            actual_notional = float(quantity) * prices[symbol]
-            actual_weight = actual_notional / actual_gross if actual_gross > 0 else None
-            if target_weight == 0.0:
-                ok = abs(actual_notional) <= self.policy.flat_position_notional_tolerance_usd
-                weight_error = abs(actual_weight) if actual_weight is not None else 0.0
-            else:
-                weight_error = abs(actual_weight - target_weight) if actual_weight is not None else None
-                ok = weight_error is not None and weight_error <= self.policy.position_weight_tolerance
+            expected = plan.expected_positions.get(symbol, Decimal("0"))
+            observed = actual.get(symbol, Decimal("0"))
+            budget = plan.tolerance_budgets.get(symbol, {})
+            step = _decimal(budget.get("step_size", "0"))
+            rounding_steps = _decimal(budget.get("rounding_steps", "0"))
+            min_notional = _decimal(budget.get("min_notional", "0"))
+            min_notional_fraction = _decimal(budget.get("min_notional_fraction", "0"))
+            price = _decimal(prices[symbol])
+            tolerance = max(
+                step * rounding_steps,
+                (min_notional / price) * min_notional_fraction,
+            ) if price > 0 else Decimal("0")
+            error = abs(observed - expected)
             rows.append({
-                "symbol": symbol, "price": prices[symbol], "target_weight": target_weight,
-                "actual_quantity": str(quantity), "actual_notional": actual_notional,
-                "actual_weight": actual_weight, "weight_error": weight_error, "ok": ok,
+                "symbol": symbol, "verification_price": prices[symbol],
+                "expected_quantity": str(expected), "actual_quantity": str(observed),
+                "quantity_error": str(error), "quantity_tolerance": str(tolerance),
+                "expected_notional": float(expected * price), "actual_notional": float(observed * price),
+                "open_orders": len(open_orders[symbol]),
+                "ok": error <= tolerance and not open_orders[symbol],
             })
+        expected_gross = sum(abs(row["expected_notional"]) for row in rows)
+        actual_gross = sum(abs(row["actual_notional"]) for row in rows)
         payload = {
-            "expected_gross_notional": target_gross, "actual_gross_notional": actual_gross,
-            "gross_error_usd": gross_error, "gross_tolerance_usd": gross_tolerance,
-            "gross_ok": gross_error <= gross_tolerance,
-            "position_weight_tolerance": self.policy.position_weight_tolerance,
-            "flat_position_notional_tolerance_usd": self.policy.flat_position_notional_tolerance_usd,
+            "price_basis": "single post-trade book-ticker pass",
+            "expected_gross_notional": expected_gross,
+            "actual_gross_notional": actual_gross,
             "rows": rows,
         }
-        return bool(rows) and payload["gross_ok"] and all(row["ok"] for row in rows), payload
+        return bool(rows) and all(row["ok"] for row in rows), payload
 
     def _configure_symbol(self, symbol: str) -> None:
         try:
@@ -543,6 +614,7 @@ class TestnetExecutor:
 
     def execute(self, book: TargetBook, *, dry_run: bool) -> dict[str, Any]:
         run_id, armed, orders_started = uuid.uuid4().hex, False, False
+        approval: dict[str, Any] = {}
         self.audit.start(run_id, book, dry_run)
         try:
             if not dry_run:
@@ -550,12 +622,15 @@ class TestnetExecutor:
                 self.assert_target_identity(book)
                 if self.audit.target_completed(book.target_id):
                     raise RuntimeError(f"target_id already completed: {book.target_id}")
-                self.kill_switch.assert_released_for_testnet(
-                    max_age_seconds=self.policy.kill_switch_release_ttl_seconds
+                approval = self.kill_switch.assert_released_for_testnet(
+                    max_age_seconds=self.policy.kill_switch_release_ttl_seconds,
+                    expected_target_id=book.target_id,
+                    expected_budget_usd=self.policy.max_gross_notional_usd,
                 )
                 armed = True
             gross_budget = self._gross_budget()
-            legs, skips = self.build_plan(book, gross_budget=gross_budget)
+            plan = self.build_plan(book, gross_budget=gross_budget)
+            legs, skips = plan.legs, plan.skips
             for message in skips:
                 self.audit.leg(run_id, -1, PlanLeg("", "", Decimal(0), False, 0, message, Decimal(0), Decimal(0), 0.0), "SKIPPED")
             if dry_run:
@@ -567,11 +642,20 @@ class TestnetExecutor:
             if critical_skips:
                 raise RuntimeError("incomplete target; refuse partial portfolio: " + ", ".join(critical_skips))
             self.audit.positions(run_id, "before_orders", self.client.positions())
-            orphan_symbols = sorted({leg.symbol for leg in legs if leg.reason == "close_orphan"})
+            orphan_symbols = plan.orphan_symbols
             self.audit.positions(run_id, "orphan_symbols", orphan_symbols)
-            for symbol in orphan_symbols:
+            pending_before = self.client.open_orders()
+            pending_symbols = sorted({str(item.get("symbol", "")).upper() for item in pending_before if item.get("symbol")})
+            for symbol in sorted(set(orphan_symbols) | set(pending_symbols)):
+                # Always cancel orphan symbols, even when the first snapshot is empty:
+                # an order can race the snapshot and otherwise reopen a just-flat book.
                 self.client.cancel_all(symbol)
-                self.audit.positions(run_id, f"orphan_pending_orders_cancelled:{symbol}", {})
+            pending_after = self.client.open_orders()
+            self.audit.positions(run_id, "preflight_open_orders", {"before": pending_before, "after": pending_after, "cancelled_symbols": sorted(set(orphan_symbols) | set(pending_symbols))})
+            if pending_after:
+                raise RuntimeError("open orders remain after preflight cancel_all")
+            contract = self._execution_contract(book, plan, approval)
+            self.audit.positions(run_id, "execution_contract", contract)
             for symbol, weight in book.weights.items():
                 if abs(weight) > 0:
                     self._configure_symbol(symbol)
@@ -581,7 +665,9 @@ class TestnetExecutor:
                 client_order_id = self._client_order_id(run_id, book, leg, index)
                 prepared_params = self._order_params(leg, client_order_id)
                 self.kill_switch.assert_released_for_testnet(
-                    max_age_seconds=self.policy.kill_switch_release_ttl_seconds
+                    max_age_seconds=self.policy.kill_switch_release_ttl_seconds,
+                    expected_target_id=book.target_id,
+                    expected_budget_usd=self.policy.max_gross_notional_usd,
                 )
                 orders_started = True
                 response, client_order_id = self._submit_leg(
@@ -598,27 +684,29 @@ class TestnetExecutor:
                         f"{leg.symbol} adverse fill slippage {slippage:.2f}bps exceeds "
                         f"limit {self.policy.max_fill_slippage_bps:.2f}bps"
                     )
-            after_positions = self.client.positions()
+            try:
+                after_positions = self.client.positions()
+            except BaseException as exc:
+                raise VerificationUnavailableError(f"positionRisk verification unavailable: {exc}") from exc
             self.audit.positions(run_id, "after_orders", after_positions)
-            positions_ok, verification = self._verify_target_positions(
-                book, after_positions, gross_budget
-            )
+            positions_ok, verification = self._verify_execution_plan(plan, after_positions)
+            verification["contract_sha256"] = contract["contract_sha256"]
             self.audit.positions(run_id, "target_verification", verification)
             if not positions_ok:
                 raise TargetMismatchError(
-                    f"final exchange positions do not match target: gross "
+                    f"final exchange positions do not match execution contract: gross "
                     f"{verification['actual_gross_notional']:.2f} vs "
                     f"{verification['expected_gross_notional']:.2f} USD"
                 )
             if not self._safe_engage(run_id, f"run {run_id} complete; manual release required for next run"):
                 raise RuntimeError("could not re-engage kill switch after completed orders")
             self.audit.finish(run_id, "COMPLETE", f"{len(legs)} legs, {len(skips)} skips")
-            return {"run_id": run_id, "status": "COMPLETE", "legs": len(legs), "skips": skips, "verification": verification}
+            return {"run_id": run_id, "status": "COMPLETE", "legs": len(legs), "skips": skips, "contract_sha256": contract["contract_sha256"], "verification": verification}
         except BaseException as exc:
             if armed:
                 self._safe_engage(run_id, f"automatic emergency stop: {type(exc).__name__}: {exc}")
             flatten_ok: bool | None = None
-            if orders_started:
+            if orders_started and not isinstance(exc, VerificationUnavailableError):
                 try:
                     flatten_ok = self._flatten_all(run_id, f"{type(exc).__name__}: {exc}", set(book.weights))
                 except BaseException as cleanup_exc:
@@ -629,6 +717,8 @@ class TestnetExecutor:
                         pass
             if flatten_ok is False:
                 final_status = "UNRESOLVED_EXPOSURE"
+            elif isinstance(exc, VerificationUnavailableError):
+                final_status = "VERIFICATION_UNAVAILABLE"
             elif isinstance(exc, TargetMismatchError):
                 final_status = "MISMATCH"
             elif isinstance(exc, KeyboardInterrupt):
