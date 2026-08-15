@@ -1,5 +1,6 @@
 # Environment & API Keys
 .env
+.env.*
 .env.local
 
 # Python

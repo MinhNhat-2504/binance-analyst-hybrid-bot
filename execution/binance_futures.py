@@ -29,6 +29,28 @@ LIVE_BASE_URL = "https://fapi.binance.com"
 PAPER_BASE_URLS = (TESTNET_BASE_URL, DEMO_TESTNET_BASE_URL)
 
 
+# Optional file-based credentials for people who cannot / do not want to set Windows
+# environment variables. Read ONLY these three names, ONLY from <repo>/.env.testnet, and
+# never override a variable that is already set in the real environment. The file is
+# gitignored (.env*). Live credentials are deliberately not loadable this way.
+_DOTENV_TESTNET_KEYS = ("BINANCE_TESTNET_API_KEY", "BINANCE_TESTNET_API_SECRET", "BINANCE_TESTNET_HOST")
+
+
+def _load_dotenv_testnet() -> None:
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / ".env.testnet"
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name, value = name.strip(), value.strip().strip('"').strip("'")
+        if name in _DOTENV_TESTNET_KEYS and name not in os.environ and value:
+            os.environ[name] = value
+
+
 class BinanceAPIError(RuntimeError):
     def __init__(self, message: str, *, status_code: int | None = None, payload: Any = None) -> None:
         super().__init__(message)
@@ -69,6 +91,7 @@ class FuturesREST:
     @classmethod
     def from_env(cls, environment: str, *, required: bool = True) -> "FuturesREST":
         env = str(environment).upper()
+        _load_dotenv_testnet()
         key = os.getenv(f"BINANCE_{env}_API_KEY", "").strip()
         secret = os.getenv(f"BINANCE_{env}_API_SECRET", "").strip()
         if required and (not key or not secret):
