@@ -773,6 +773,77 @@ def test_reconciler_default_ignores_newer_failed_attempt() -> None:
     assert select_execution_run(conn, "target", "failed")[0] == "failed"
 
 
+def test_every_status_the_engine_can_write_is_classified_in_the_registry() -> None:
+    """Round 9 added HALTED_AUDIT_UNAVAILABLE in the engine; the reconciler's private copy
+    of the exposure list never learned about it, so a halted run with a live book
+    reconciled as exit 0. This test reads engine.py and refuses any status literal that
+    is not in execution.contracts.ALL_STATUSES - adding a status now FAILS here until it
+    is classified as exposure or closed."""
+    import re
+    from pathlib import Path
+    from execution.contracts import ALL_STATUSES, CLOSED_STATUSES, EXPOSURE_STATUSES
+    src = Path("execution/engine.py").read_text(encoding="utf-8")
+    written = set(re.findall(r'final_status = "([A-Z_]+)"', src))
+    # ternary halves, but only on final_status lines (side literals BUY/SELL also use `else "..."`)
+    for line in src.splitlines():
+        if "final_status = " in line:
+            written |= set(re.findall(r'"([A-Z_]+)"', line))
+    written |= set(re.findall(r'audit\.finish\(run_id, "([A-Z_]+)"', src))
+    written |= set(re.findall(r'"status": "([A-Z_]+)"', src))
+    assert written, "regex found no statuses - test is broken, not the code"
+    unclassified = written - ALL_STATUSES
+    assert not unclassified, f"engine writes statuses the registry does not classify: {sorted(unclassified)}"
+    assert not (EXPOSURE_STATUSES & CLOSED_STATUSES), "a status cannot be both exposure and closed"
+
+
+def test_reconciler_sees_audit_unavailable_and_running_as_exposure() -> None:
+    from reconcile_paper_vs_testnet import open_exposure_runs
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE execution_runs (run_id TEXT, started_utc TEXT, finished_utc TEXT, target_id TEXT, environment TEXT, dry_run INTEGER, status TEXT, message TEXT)")
+    conn.execute("INSERT INTO execution_runs VALUES ('a','2026-08-15T00:00:00Z','','t','testnet',0,'HALTED_AUDIT_UNAVAILABLE','db locked')")
+    conn.execute("INSERT INTO execution_runs VALUES ('b','2026-08-15T01:00:00Z','','t','testnet',0,'RUNNING','')")
+    conn.execute("INSERT INTO execution_runs VALUES ('c','2026-08-15T02:00:00Z','','t','testnet',0,'FAILED','plan abort')")
+    found = {r[0] for r in open_exposure_runs(conn, "t")}
+    assert found == {"a", "b"}, found   # FAILED is closed; the other two are live exposure
+
+
+def test_ceilings_sha_reaches_contract_and_reconciler_rejects_a_wrong_one(tmp_path) -> None:
+    """The binding is only real if the sha is (a) written into the contract and (b) checked
+    against the current file. Both halves survived mutation in round 9 - neither was tested."""
+    from execution.contracts import CEILINGS_SHA256
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "sha-wire", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100.0, "BBBUSDT": 100.0}, "unit-test")
+    client, kill = TrackingClient(), KillSwitch(tmp_path / "kill.json")
+    _release(kill, book)
+    audit = ExecutionAudit(tmp_path / "audit.sqlite3")
+    result = TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now).execute(book, dry_run=False)
+    assert result["status"] == "COMPLETE"
+    contract = json.loads(audit.connection.execute(
+        "SELECT positions_json FROM position_snapshots WHERE run_id=? AND phase='execution_contract'", (result["run_id"],)
+    ).fetchone()[0])
+    assert contract["ceilings_file_sha256"] == CEILINGS_SHA256          # (a) written
+    # (b) checked: a contract governed by a DIFFERENT ceilings file must not reconcile.
+    import reconcile_paper_vs_testnet as rec
+    tampered = dict(contract, ceilings_file_sha256="0" * 64)
+    # Recompute the contract's own hash so only the ceilings-binding check can fail.
+    tampered["contract_sha256"] = rec.contract_sha256(tampered)
+    authorized = float(tampered["authorized_budget_usd"]); effective = float(tampered["effective_gross_budget_usd"]); frozen = float(tampered["frozen_testnet_gross_ceiling_usd"])
+    from execution.contracts import FROZEN_TESTNET_GROSS_CEILING_USD
+    authorization_ok = (authorized > 0 and 0 < effective <= authorized <= frozen and frozen == FROZEN_TESTNET_GROSS_CEILING_USD
+                        and tampered.get("ceilings_file_sha256", CEILINGS_SHA256) == CEILINGS_SHA256)
+    assert authorization_ok is False
+
+
+def test_ceilings_hash_is_immune_to_line_ending_conversion(tmp_path) -> None:
+    from execution.contracts import load_ceilings
+    body = json.dumps({"ceilings_usd": {"testnet": 500.0, "live": 0.0}}, indent=2)
+    lf, crlf = tmp_path / "lf.json", tmp_path / "crlf.json"
+    lf.write_bytes(body.encode("utf-8"))
+    crlf.write_bytes(body.replace(chr(10), chr(13) + chr(10)).encode("utf-8"))
+    assert lf.read_bytes() != crlf.read_bytes()
+    assert load_ceilings(lf)[1] == load_ceilings(crlf)[1]
+
+
 def test_reconciler_surfaces_halted_exposure_instead_of_reporting_nothing(tmp_path) -> None:
     """A run that halted mid-book left positions on the exchange on purpose. The old
     reconciler filtered status='COMPLETE', found nothing, printed 'nothing to reconcile'

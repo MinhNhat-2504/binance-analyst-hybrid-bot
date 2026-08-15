@@ -9,7 +9,7 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
-from execution.contracts import CEILINGS_SHA256, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
+from execution.contracts import CEILINGS_SHA256, EXPOSURE_STATUSES as _EXPOSURE_STATUSES, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
 from execution.targets import load_target_book
 
 
@@ -22,14 +22,9 @@ def _position_map(payload: str) -> dict[str, Decimal]:
     return {str(row.get("symbol", "")).upper(): Decimal(str(row.get("positionAmt", 0))) for row in json.loads(payload)}
 
 
-# Terminal statuses that leave positions on the exchange ON PURPOSE (halts, external
-# drift, unresolved flattens). These are the runs a human most needs to see, and they are
-# exactly the ones a status='COMPLETE' filter hides.
-EXPOSURE_STATUSES = (
-    "HALTED_MID_BOOK", "HALTED_CANCEL_FAILED",
-    "EXTERNAL_POSITION_DRIFT", "EXTERNAL_DRIFT_CANCEL_FAILED",
-    "UNRESOLVED_EXPOSURE", "VERIFICATION_UNAVAILABLE", "MISMATCH",
-)
+# Single source of truth for which statuses mean "positions may be live": the registry in
+# execution.contracts. Round 9 taught us not to keep a second copy here.
+EXPOSURE_STATUSES = tuple(sorted(_EXPOSURE_STATUSES))
 # Snapshot phases that describe what is HELD at the end of a run, in preference order.
 HELD_PHASES = ("after_orders", "cancel_only_positions", "emergency_flatten_unresolved", "emergency_flatten_verified")
 
@@ -120,8 +115,11 @@ def main() -> int:
             "SELECT phase,positions_json FROM position_snapshots WHERE run_id=? ORDER BY captured_utc DESC", (newest[0],)
         ).fetchall() if r[0] in HELD_PHASES), None)
         held = json.loads(held_row[1]) if held_row else None
+        sidecar = Path(args.audit + ".sidecar.jsonl")
         print(json.dumps({
             "ATTENTION": "target has a run that ended in a hand-off state; positions may be live and unhedged",
+            "sidecar": (f"{sidecar} exists - read its LAST line, it is the audit's out-of-band terminal record"
+                        if sidecar.exists() else "no sidecar (audit DB accepted the terminal row)"),
             "target_id": target.target_id,
             "runs_with_open_exposure": [dict(zip(("run_id", "started_utc", "finished_utc", "status", "message"), r)) for r in exposure],
             "positions_held_at_handoff": held if held is not None else "NO POSITION SNAPSHOT RECORDED - query the exchange directly",
@@ -130,6 +128,11 @@ def main() -> int:
         return 3
     row = select_execution_run(conn, target.target_id, args.run_id)
     if not row:
+        sidecar = Path(args.audit + ".sidecar.jsonl")
+        if sidecar.exists():
+            print(f"No COMPLETE run for {target.target_id}, but {sidecar} exists: a run ended while "
+                  f"the audit DB was unwritable. Read its last line before assuming the account is flat.")
+            return 3
         print(f"No execution run exists for frozen target {target.target_id}.")
         return 0
     run_id = row[0]

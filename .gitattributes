@@ -1,0 +1,4 @@
+# JSON is hashed into execution contracts; line endings must not drift between machines.
+*.json text eol=lf
+*.py text eol=lf
+*.md text eol=lf

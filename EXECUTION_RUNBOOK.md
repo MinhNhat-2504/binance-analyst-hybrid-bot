@@ -30,15 +30,17 @@ Kill-switch tự **bật lại** sau mỗi run thành công. Release hết hạn
 |---|---|---|---|
 | `COMPLETE` | = contract, đã verify | Ngày bình thường | Chạy reconcile; xong |
 | `DRY_RUN` | không đổi | `--plan` | Không có gì |
-| `FAILED` (trước khi có lệnh) | không đổi | Abort ở giai đoạn plan: drift, thiếu reference, target cũ, budget không khớp release, hedge mode… | Đọc message, sửa nguyên nhân, chạy lại. Không có gì trên sàn để dọn |
+| `FAILED` | **tùy** — xem `orders_started` trong audit/sidecar | Hoặc abort ở giai đoạn plan (drift, thiếu reference, target cũ, budget không khớp, hedge mode) → không có gì trên sàn; **hoặc** lỗi sau khi có lệnh mà engine đã flatten thành công → sàn flat nhưng bạn đã trả phí một vòng | Đọc message. Nếu có snapshot `emergency_flatten_verified` → đã thanh lý, điều tra nguyên nhân trước khi chạy lại. Nếu không → chỉ là abort plan, sửa rồi chạy lại |
+| `RUNNING` (không đổi sau nhiều phút) | **không rõ** | Process chết giữa chừng (mất điện, taskkill). Reconciler coi đây là exposure | Vào sàn xem thật; xử lý như `HALTED_MID_BOOK` |
 | **`HALTED_MID_BOOK`** | **một phần book, lệch** | Đang đặt lệnh thì: kill-switch hết hạn / bị bật tay, market data mất trước POST, lệnh chờ lạ xuất hiện, slippage vượt ngưỡng, hoặc không ghi được kill-switch sau khi verify | **Xem mục "Được giao book lệch"** |
-| `HALTED_AUDIT_UNAVAILABLE` | như trên | Như trên nhưng do sqlite từ chối ghi. Terminal state nằm trong `.execution/testnet_execution.sqlite3.sidecar.jsonl` | Đọc sidecar → mục "Được giao book lệch" |
+| `HALTED_AUDIT_UNAVAILABLE` | như trên | Như trên nhưng do sqlite từ chối ghi giữa chừng. Nếu DB hồi lại kịp lúc ghi kết thúc thì row status có trong DB; nếu không, terminal state + book đang giữ nằm trong `.execution/testnet_execution.sqlite3.sidecar.jsonl` (dòng cuối). Reconciler tự báo file này nếu tồn tại | Đọc DB **rồi** sidecar → mục "Được giao book lệch" |
+| `EXTERNAL_DRIFT_CANCEL_FAILED` | book mình đúng, dust bị ADL, **và có thể còn lệnh chờ** | Như `EXTERNAL_POSITION_DRIFT` nhưng cancel lệnh chờ thất bại | Vào sàn **hủy lệnh chờ tay**; sau đó thường không cần gì thêm |
 | `HALTED_CANCEL_FAILED` | lệch **và có thể còn lệnh chờ** | Halt, và cancel lệnh chờ cũng thất bại | Vào sàn **hủy lệnh chờ bằng tay trước**, rồi mục "Được giao book lệch" |
 | `EXTERNAL_POSITION_DRIFT` | book của mình đúng, một symbol dust bị ADL/liquidation ngoài | Không phải lỗi mình; engine chỉ cancel lệnh chờ | Xem symbol drift trong audit; thường không cần làm gì; ghi chú |
 | `VERIFICATION_UNAVAILABLE` | có thể đúng, **chưa verify được** | Quote timeout / quote = 0 sau khi fill xong | Chạy reconcile với `--run-id`; nếu chưa có `after_orders` thì **so tay** với `execution_contract` trong audit |
 | **`MISMATCH`** | **đã flatten** (nếu flatten thành công) | Vị thế thật sự sai contract → engine đã thanh lý | Xem `target_verification` để biết symbol nào sai; điều tra fill; **không** chạy lại cho tới khi hiểu |
 | **`UNRESOLVED_EXPOSURE`** | **lệch, flatten thất bại** | Muốn thanh lý mà sàn không cho (reject/lỗi) | **Khẩn**: vào sàn đóng tay theo `emergency_flatten_unresolved` snapshot |
-| `INTERRUPTED` | tùy thời điểm | Ctrl+C trước khi có lệnh | Như `FAILED` |
+| `INTERRUPTED` | tùy thời điểm | Ctrl+C. Trước khi có lệnh → không đổi. Sau khi có lệnh → engine đã cố flatten (xem snapshot `emergency_flatten_*`) | Như `FAILED`: xem `orders_started` + snapshot flatten để biết sàn có flat không |
 
 ## Được giao book lệch (`HALTED_*`)
 
@@ -50,7 +52,7 @@ Bạn đang cầm một danh mục market-neutral **chưa hoàn thành** — có
    - *Market data / slippage*: thị trường xấu lúc đó. Chờ ổn rồi bước 3.
    - *Lệnh chờ lạ*: **ai đặt?** Nếu không phải bạn → tài khoản đang bị dùng chung hoặc có process khác — dừng mọi thứ, tìm nguồn.
 3. **Chọn một trong hai, không có lựa chọn thứ ba**:
-   - **Hoàn thành**: release lại (target_id + budget y hệt) và `--execute` lại **cùng target**. Engine đọc vị thế hiện tại và chỉ đặt phần còn thiếu — không đặt lại phần đã có. Đây là đường mặc định nếu nguyên nhân đã hết.
+   - **Hoàn thành**: release lại (target_id + budget y hệt) và `--execute` lại **cùng target**. Engine đọc vị thế hiện tại và chỉ đặt phần còn thiếu — không đặt lại phần đã có (`HALTED_*` không bị guard "đã COMPLETE" chặn). Đây là đường mặc định nếu nguyên nhân đã hết. **Hai thứ hay chặn re-run**: target quá 6h (freshness), và **drift gate** — vài giờ sau halt, giá đã đi xa reference của target cũ, per-symbol 300bps / median 150bps sẽ từ chối. Chạy `--plan` trước; nếu drift chặn thì đường còn lại là **Đóng hết** rồi target mới ngày mai. Lưu ý budget tính lại từ equity hiện tại nên contract mới sẽ khác contract cũ một chút — bình thường.
    - **Đóng hết**: nếu không tin được trạng thái, không hiểu nguyên nhân, hoặc target đã quá cũ (>6h) → đóng tay trên sàn (reduce-only, market), rồi ghi lại vào audit bằng tay/ghi chú. Ngày mai chạy target mới từ đầu.
    - **Không được**: để nguyên và "xem sao". Book lệch = đang beta thị trường, không phải chiến lược.
 4. **Ghi lại** vào `carry_paper_incidents.md` (tạo nếu chưa có): ngày, status, nguyên nhân, quyết định. 60 ngày paper cần record này để biết executor có đáng tin không.
@@ -58,7 +60,7 @@ Bạn đang cầm một danh mục market-neutral **chưa hoàn thành** — có
 ## Những thứ engine cố tình KHÔNG làm
 
 - Không tự chạy lại sau halt. Mọi lần chạy đều cần release mới.
-- Không tự nâng budget. `--budget-usd` chỉ được **≤** ceiling trong `execution_ceilings_v1.json` (hiện testnet 500, live **0**). Đổi file đó = đổi hash mọi contract tương lai = sự kiện có review, không phải knob.
+- Không tự nâng budget. `--budget-usd` phải **bằng đúng** số đã release (`--authorize-budget-usd`), và cả hai phải ≤ ceiling trong `execution_ceilings_v1.json` (hiện testnet 500, live **0**). Đổi file đó = đổi hash mọi contract tương lai = sự kiện có review, không phải knob. Khi ra `execution_ceilings_v2.json`, giữ nguyên v1 để reconcile được các run cũ.
 - Không tự quyết "lỗi nhỏ thì kệ". Mọi status không phải COMPLETE đều cần bạn đọc.
 
 ## Trước khi bàn chuyện live

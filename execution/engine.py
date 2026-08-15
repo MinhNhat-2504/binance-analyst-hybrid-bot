@@ -989,7 +989,13 @@ class TestnetExecutor:
                     "positions verified correct but the kill switch could not be re-engaged; "
                     "book left intact - engage the switch manually before any further run"
                 )
-            self.audit.finish(run_id, "COMPLETE", f"{len(legs)} legs, {len(skips)} skips")
+            try:
+                self.audit.finish(run_id, "COMPLETE", f"{len(legs)} legs, {len(skips)} skips")
+            except BaseException as audit_exc:
+                # Positions verified, kill switch re-engaged - the book is right. Failing to
+                # write the word COMPLETE must not liquidate it (round-9 review found this
+                # was the one post-order audit write still routed to a flatten).
+                raise AuditWriteError(f"audit rejected COMPLETE for a verified book: {audit_exc}") from audit_exc
             return {"run_id": run_id, "status": "COMPLETE", "legs": len(legs), "skips": skips, "contract_sha256": contract["contract_sha256"], "verification": verification}
         except BaseException as exc:
             if armed:
