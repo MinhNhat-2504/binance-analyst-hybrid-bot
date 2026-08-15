@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -643,27 +644,31 @@ def test_final_target_mismatch_never_records_complete_and_is_flattened(tmp_path)
 
 
 def test_adversarial_client_refusing_flatten_records_unresolved_exposure(tmp_path) -> None:
+    """A confirmed POSITION error (opening fills land at 10x size) forces a flatten; the
+    venue then reports every reduce-only order FILLED while never moving inventory. The
+    engine must not believe it: status UNRESOLVED_EXPOSURE, and the exposure it could
+    not remove is still visible in the tracking inventory."""
     class RefusesFlattenClient(TrackingClient):
         def order(self, **params):
             if params["reduceOnly"] == "true":
-                self.orders.append(params)
+                self.orders.append(params)          # lies: says filled, moves nothing
                 return {"status": "FILLED", "avgPrice": "100"}
+            # Opening fills are 10x what was asked - a real, own, position error.
+            params = dict(params, quantity=str(Decimal(str(params["quantity"])) * 10))
             return super().order(**params)
-
-        def get_order(self, symbol, order_id):
-            return {"orderId": order_id, "status": "FILLED", "avgPrice": "120"}
 
     now = datetime.now(timezone.utc)
     book = TargetBook("unit-test", "unresolved", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100, "BBBUSDT": 100}, "unit-test")
     client, kill = RefusesFlattenClient(), KillSwitch(tmp_path / "kill.json")
     _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
-    policy = ExecutionPolicy(max_fill_slippage_bps=5, poll_seconds=0, flatten_retry_seconds=0, flatten_max_attempts=2, expected_config_sha256="a" * 64)
-    with pytest.raises(RuntimeError, match="slippage"):
+    policy = ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, flatten_max_attempts=2, expected_config_sha256="a" * 64)
+    with pytest.raises(TargetMismatchError):
         TestnetExecutor(client, policy, kill, audit, now=lambda: now).execute(book, dry_run=False)
     row = audit.connection.execute("SELECT status FROM execution_runs WHERE target_id='unresolved'").fetchone()
     assert row[0] == "UNRESOLVED_EXPOSURE"
-    assert client.inventory
+    assert client.inventory  # the 10x book is still there; the engine did not pretend otherwise
+    assert any(o["reduceOnly"] == "true" for o in client.orders)  # it did TRY to flatten
 
 
 def test_order_poll_is_bounded_and_new_never_completes(tmp_path) -> None:
@@ -723,7 +728,10 @@ def test_exchange_error_mid_portfolio_forces_verified_flatten(tmp_path) -> None:
     assert audit.connection.execute("SELECT 1 FROM position_snapshots WHERE phase='emergency_flatten_verified'").fetchone()
 
 
-def test_kill_switch_write_failure_cannot_skip_flatten_or_audit(tmp_path) -> None:
+def test_kill_switch_write_failure_after_verified_book_halts_and_keeps_positions(tmp_path) -> None:
+    """Every order filled, verification passed, then the kill-switch file cannot be written.
+    Round-7 flattened here. That liquidated a book that had just been PROVEN correct over
+    a disk error. Now: HaltedError, positions untouched, audit still records the fault."""
     class BrokenEngageSwitch(KillSwitch):
         def engage(self, reason: str) -> None:
             raise OSError("disk read-only")
@@ -734,12 +742,17 @@ def test_kill_switch_write_failure_cannot_skip_flatten_or_audit(tmp_path) -> Non
     kill = BrokenEngageSwitch(tmp_path / "kill.json")
     _release(kill, book)
     audit = ExecutionAudit(tmp_path / "audit.sqlite3")
-    with pytest.raises(RuntimeError, match="could not re-engage"):
+    with pytest.raises(HaltedError, match="could not be re-engaged"):
         TestnetExecutor(client, ExecutionPolicy(poll_seconds=0, flatten_retry_seconds=0, expected_config_sha256="a" * 64), kill, audit, now=lambda: now).execute(book, dry_run=False)
-    assert client.inventory == {}
+    # The verified book is intact and no reduce-only order was ever sent.
+    assert client.inventory == {"AAAUSDT": Decimal("1")}
+    assert not any(o.get("reduceOnly") == "true" for o in client.orders)
     status = audit.connection.execute("SELECT status FROM execution_runs WHERE target_id='engage-fails'").fetchone()[0]
-    assert status == "FAILED"
+    assert status == "HALTED_MID_BOOK"
     assert audit.connection.execute("SELECT 1 FROM position_snapshots WHERE phase='kill_switch_engage_failed'").fetchone()
+    # And the human handed this book can see exactly what they hold.
+    held = audit.connection.execute("SELECT 1 FROM position_snapshots WHERE phase='cancel_only_positions'").fetchone()
+    assert held
 
 
 def test_from_env_never_falls_back_to_legacy_credentials(monkeypatch) -> None:
@@ -758,6 +771,48 @@ def test_reconciler_default_ignores_newer_failed_attempt() -> None:
     conn.execute("INSERT INTO execution_runs VALUES ('failed','2026-08-15T01:00:00Z','', 'target','testnet',0,'FAILED','duplicate blocked')")
     assert select_execution_run(conn, "target")[0] == "complete"
     assert select_execution_run(conn, "target", "failed")[0] == "failed"
+
+
+def test_reconciler_surfaces_halted_exposure_instead_of_reporting_nothing(tmp_path) -> None:
+    """A run that halted mid-book left positions on the exchange on purpose. The old
+    reconciler filtered status='COMPLETE', found nothing, printed 'nothing to reconcile'
+    and exited 0 - the account looked flat while a partial book was live. Now the
+    hand-off is the FIRST thing reported, with the held positions, and exit is non-zero."""
+    from reconcile_paper_vs_testnet import HELD_PHASES, open_exposure_runs, select_execution_run
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE execution_runs (run_id TEXT, started_utc TEXT, finished_utc TEXT, target_id TEXT, environment TEXT, dry_run INTEGER, status TEXT, message TEXT)")
+    conn.execute("CREATE TABLE position_snapshots (run_id TEXT, phase TEXT, captured_utc TEXT, positions_json TEXT)")
+    conn.execute("INSERT INTO execution_runs VALUES ('halted','2026-08-15T00:00:00Z','2026-08-15T00:01:00Z','target','testnet',0,'HALTED_MID_BOOK','kill switch is engaged')")
+    conn.execute("INSERT INTO position_snapshots VALUES ('halted','cancel_only_positions','2026-08-15T00:01:00Z', ?)",
+                 (json.dumps([{"symbol": "AAAUSDT", "positionAmt": "0.5"}]),))
+    # COMPLETE-only selection still finds nothing (that is the hole) ...
+    assert select_execution_run(conn, "target") is None
+    # ... but the exposure query finds the halt and its held book.
+    runs = open_exposure_runs(conn, "target")
+    assert [r[0] for r in runs] == ["halted"]
+    assert runs[0][3] == "HALTED_MID_BOOK"
+    held = next(r for r in conn.execute("SELECT phase,positions_json FROM position_snapshots WHERE run_id='halted'") if r[0] in HELD_PHASES)
+    assert json.loads(held[1]) == [{"symbol": "AAAUSDT", "positionAmt": "0.5"}]
+
+
+def test_reconciler_cli_exits_3_and_prints_held_book_on_halted_run(tmp_path, capsys, monkeypatch) -> None:
+    """End-to-end through main(): a halted run makes reconcile exit 3 with the held book."""
+    import reconcile_paper_vs_testnet as rec
+    audit = tmp_path / "audit.sqlite3"
+    conn = sqlite3.connect(audit)
+    conn.execute("CREATE TABLE execution_runs (run_id TEXT, started_utc TEXT, finished_utc TEXT, target_id TEXT, environment TEXT, dry_run INTEGER, status TEXT, message TEXT)")
+    conn.execute("CREATE TABLE position_snapshots (run_id TEXT, phase TEXT, captured_utc TEXT, positions_json TEXT)")
+    conn.execute("CREATE TABLE execution_legs (run_id TEXT, sequence INTEGER, symbol TEXT)")
+    conn.execute("INSERT INTO execution_runs VALUES ('halted','2026-08-15T00:00:00Z','2026-08-15T00:01:00Z','target-1','testnet',0,'HALTED_MID_BOOK','operator halt')")
+    conn.execute("INSERT INTO position_snapshots VALUES ('halted','cancel_only_positions','2026-08-15T00:01:00Z', ?)",
+                 (json.dumps([{"symbol": "AAAUSDT", "positionAmt": "0.5"}]),))
+    conn.commit(); conn.close()
+    targets = _target_file(tmp_path, {"AAAUSDT": 0.5, "BBBUSDT": -0.5})
+    monkeypatch.setattr(sys, "argv", ["reconcile", "--targets", str(targets), "--audit", str(audit)])
+    code = rec.main()
+    out = capsys.readouterr().out
+    assert code == 3
+    assert "ATTENTION" in out and "HALTED_MID_BOOK" in out and "AAAUSDT" in out
 
 
 def test_release_is_bound_to_exact_target_and_operator_budget(tmp_path) -> None:
@@ -902,6 +957,47 @@ def test_fill_slippage_uses_live_plan_mark_and_keeps_paper_reference_for_attribu
     assert {row[0] for row in rows} == {99.6, 100.4}
     assert {row[1] for row in rows} == {100.0}
     assert all(39.9 < row[2] < 40.1 for row in rows)
+
+
+def test_slippage_is_measured_against_submit_time_requote_not_plan_mark(tmp_path) -> None:
+    """Plan-time mid is 100.0; by the time the POST goes out the market is 101.0 and the
+    fill prints 101.2. Round-7 measured 120bps against the stale plan mark and would trip
+    a 50bps gate on pure drift. With the submit-time re-quote the fill is 20bps through
+    the touch: within limit, COMPLETE, and the audit records 101.0 as the basis."""
+    class MovingQuoteClient(TrackingClient):
+        def __init__(self):
+            super().__init__({})
+            self.quotes = 0
+
+        def book_ticker(self, symbol):
+            self.quotes += 1
+            # first call per symbol is the plan-time quote (100), later ones are 101
+            mid = 100.0 if self.quotes <= 2 else 101.0
+            return {"bidPrice": str(mid - 0.05), "askPrice": str(mid + 0.05)}
+
+        def get_order(self, symbol, order_id):
+            return {"orderId": order_id, "status": "FILLED", "avgPrice": "101.2" if symbol == "AAAUSDT" else "100.8"}
+
+    now = datetime.now(timezone.utc)
+    book = TargetBook("unit-test", "requote", "a" * 64, now.isoformat(), now.isoformat(), {"AAAUSDT": 0.5, "BBBUSDT": -0.5}, {"AAAUSDT": 100.0, "BBBUSDT": 100.0}, "unit-test")
+    client, kill = MovingQuoteClient(), KillSwitch(tmp_path / "kill.json")
+    _release(kill, book)
+    audit = ExecutionAudit(tmp_path / "audit.sqlite3")
+    result = TestnetExecutor(
+        client, ExecutionPolicy(max_fill_slippage_bps=50, poll_seconds=0, expected_config_sha256="a" * 64),
+        kill, audit, now=lambda: now,
+    ).execute(book, dry_run=False)
+    assert result["status"] == "COMPLETE"
+    rows = audit.connection.execute(
+        "SELECT symbol, execution_reference_price, fill_slippage_bps FROM execution_legs WHERE run_id=? AND status='FILLED'",
+        (result["run_id"],),
+    ).fetchall()
+    by_symbol = {r[0]: (r[1], r[2]) for r in rows}
+    # Basis is the submit-time 101.0, not the plan-time 100.0 ...
+    assert by_symbol["AAAUSDT"][0] == 101.0 and by_symbol["BBBUSDT"][0] == 101.0
+    # ... so AAA BUY at 101.2 is ~20bps adverse (not ~120), BBB SELL at 100.8 is ~20bps adverse.
+    assert 15 < by_symbol["AAAUSDT"][1] < 25
+    assert 15 < by_symbol["BBBUSDT"][1] < 25
 
 
 def test_frozen_reference_drift_aborts_before_orders_or_cancellation(tmp_path) -> None:

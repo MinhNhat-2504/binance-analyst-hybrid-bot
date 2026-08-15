@@ -87,6 +87,10 @@ def main() -> int:
             expected_config_sha256=sha256_file(PAPER_CONFIG),
         )
         executor = TestnetExecutor(client, policy, kill, ExecutionAudit(AUDIT))
+        # These two are pure local checks with no side effects; a preview that skipped
+        # them would show a clean plan for a target that --execute is about to refuse.
+        executor.assert_target_fresh(book)
+        executor.assert_target_identity(book)
         result = executor.execute(book, dry_run=True)
         legs = result.get("legs", [])
         print(f"PLAN for target={book.target_id}: {len(legs)} legs, {len(result.get('skips', []))} skips (nothing placed)")

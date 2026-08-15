@@ -438,11 +438,6 @@ class TestnetExecutor:
                 reference = float(raw_reference)
                 reference_drift_bps = abs(mark / reference - 1.0) * 10_000
                 drift_by_symbol[symbol] = reference_drift_bps
-                if reference_drift_bps > self.policy.max_reference_drift_bps:
-                    raise RuntimeError(
-                        f"{symbol}: frozen reference drift {reference_drift_bps:.2f}bps exceeds "
-                        f"per-symbol limit {self.policy.max_reference_drift_bps:.2f}bps"
-                    )
             if not weight:
                 self._append_split(legs, instrument=instrument, mark=mark, symbol=symbol, side="SELL" if current > 0 else "BUY", quantity=abs(current), reduce_only=True, reference=reference, reason="close_orphan", desired=Decimal("0"), current=current, target_weight=0.0)
                 expected_positions[symbol] = Decimal("0")
@@ -476,10 +471,21 @@ class TestnetExecutor:
         # Portfolio-level drift: a broad regime move since the paper close means every
         # reference is stale in the same direction; the median catches that even when no
         # single symbol crosses its own (wider) veto line.
-        if drift_by_symbol:
-            median_drift = float(statistics.median(drift_by_symbol.values()))
+        # Only symbols this plan will actually TRADE may veto it. A stale dust position we
+        # deliberately leave alone (safe_noop) or a below-minimum target has no order to
+        # protect, so its drift is recorded for the audit but does not gate.
+        traded = {leg.symbol for leg in legs if not leg.reduce_only or leg.reason != "close_orphan"}
+        gated = {sym: d for sym, d in drift_by_symbol.items() if sym in traded}
+        for sym, d in sorted(gated.items(), key=lambda kv: -kv[1]):
+            if d > self.policy.max_reference_drift_bps:
+                raise RuntimeError(
+                    f"{sym}: frozen reference drift {d:.2f}bps exceeds per-symbol limit "
+                    f"{self.policy.max_reference_drift_bps:.2f}bps"
+                )
+        if gated:
+            median_drift = float(statistics.median(gated.values()))
             if median_drift > self.policy.max_median_reference_drift_bps:
-                worst = sorted(drift_by_symbol.items(), key=lambda kv: -kv[1])[:5]
+                worst = sorted(gated.items(), key=lambda kv: -kv[1])[:5]
                 raise RuntimeError(
                     f"portfolio median reference drift {median_drift:.2f}bps exceeds "
                     f"{self.policy.max_median_reference_drift_bps:.2f}bps; worst: "
@@ -527,7 +533,7 @@ class TestnetExecutor:
                 fresh_mid = (float(fresh["bidPrice"]) + float(fresh["askPrice"])) / 2.0
                 if fresh_mid > 0:
                     leg.execution_reference_price = fresh_mid
-            except BaseException:
+            except Exception:
                 pass
         try:
             response = self.client.order(**params)
@@ -631,9 +637,17 @@ class TestnetExecutor:
                 # quantity_ok answers "is the POSITION right"; ok additionally requires no
                 # resting order. execute() needs them separately: a wrong quantity is a
                 # flatten, a stray order on a correct quantity is a cancel.
-                "quantity_ok": price > 0 and error <= tolerance,
+                "price_ok": price > 0,
+                "quantity_ok": error <= tolerance,
                 "ok": price > 0 and error <= tolerance and open_order_counts.get(symbol, 0) == 0,
             })
+        unpriced = [row["symbol"] for row in rows if not row["price_ok"]]
+        if unpriced:
+            # A zero quote does not tell us the position is wrong; it tells us we cannot
+            # verify. Same class as a quote timeout: hand off, do not liquidate.
+            raise VerificationUnavailableError(
+                f"verification quote is zero for {unpriced}; cannot judge positions"
+            )
         expected_gross = sum(abs(row["expected_notional"]) for row in rows)
         actual_gross = sum(abs(row["actual_notional"]) for row in rows)
         payload = {
@@ -678,10 +692,19 @@ class TestnetExecutor:
         except BaseException as exc:
             pending_after = [{"verification_error": str(exc)}]
             verified = False
-        self.audit.positions(run_id, "external_drift_cancel_only", {
+        # The whole point of cancel-only is that positions are LEFT on the exchange for a
+        # human. That human needs to know what they were handed: snapshot the live book
+        # into the audit under a phase the reconciler knows to read.
+        try:
+            held = self.client.positions()
+        except BaseException as exc:
+            held = [{"snapshot_error": str(exc)}]
+        self.audit.positions(run_id, "cancel_only_positions", held)
+        self.audit.positions(run_id, "cancel_only_summary", {
             "reason": reason, "known_symbols": sorted(symbols),
             "open_orders_before": pending_before, "open_orders_after": pending_after,
             "cancel_failures": failures, "verified": verified,
+            "positions_held": held,
         })
         return verified
 
@@ -859,9 +882,12 @@ class TestnetExecutor:
                     raise RuntimeError(f"{leg.symbol} {leg.reason} did not fill: {status}")
                 slippage = self._adverse_slippage_bps(leg, response)
                 if slippage is not None and slippage > self.policy.max_fill_slippage_bps:
-                    raise RuntimeError(
+                    # The fill happened and the quantity is what the contract asked for;
+                    # only the PRICE was worse than the submit-time quote. That is a venue
+                    # event, not a position error - stop issuing, keep what we have.
+                    raise HaltedError(
                         f"{leg.symbol} adverse fill slippage {slippage:.2f}bps exceeds "
-                        f"limit {self.policy.max_fill_slippage_bps:.2f}bps"
+                        f"limit {self.policy.max_fill_slippage_bps:.2f}bps; halting"
                     )
             try:
                 after_positions = self.client.positions()
@@ -896,7 +922,7 @@ class TestnetExecutor:
                     )
                 bad = [
                     "{} obs={} exp={} tol={}".format(
-                        row["symbol"], row.get("observed_quantity"),
+                        row["symbol"], row.get("actual_quantity"),
                         row.get("expected_quantity"), row.get("quantity_tolerance"))
                     for row in verification["rows"] if str(row["symbol"]) in quantity_failed
                 ]
@@ -905,7 +931,12 @@ class TestnetExecutor:
                     + "; ".join(bad)
                 )
             if not self._safe_engage(run_id, f"run {run_id} complete; manual release required for next run"):
-                raise RuntimeError("could not re-engage kill switch after completed orders")
+                # Verification already passed: the book is exactly the contract. Failing to
+                # WRITE the kill-switch file is an operational fault, not a position fault.
+                raise HaltedError(
+                    "positions verified correct but the kill switch could not be re-engaged; "
+                    "book left intact - engage the switch manually before any further run"
+                )
             self.audit.finish(run_id, "COMPLETE", f"{len(legs)} legs, {len(skips)} skips")
             return {"run_id": run_id, "status": "COMPLETE", "legs": len(legs), "skips": skips, "contract_sha256": contract["contract_sha256"], "verification": verification}
         except BaseException as exc:

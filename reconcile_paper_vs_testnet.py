@@ -22,6 +22,28 @@ def _position_map(payload: str) -> dict[str, Decimal]:
     return {str(row.get("symbol", "")).upper(): Decimal(str(row.get("positionAmt", 0))) for row in json.loads(payload)}
 
 
+# Terminal statuses that leave positions on the exchange ON PURPOSE (halts, external
+# drift, unresolved flattens). These are the runs a human most needs to see, and they are
+# exactly the ones a status='COMPLETE' filter hides.
+EXPOSURE_STATUSES = (
+    "HALTED_MID_BOOK", "HALTED_CANCEL_FAILED",
+    "EXTERNAL_POSITION_DRIFT", "EXTERNAL_DRIFT_CANCEL_FAILED",
+    "UNRESOLVED_EXPOSURE", "VERIFICATION_UNAVAILABLE", "MISMATCH",
+)
+# Snapshot phases that describe what is HELD at the end of a run, in preference order.
+HELD_PHASES = ("after_orders", "cancel_only_positions", "emergency_flatten_unresolved", "emergency_flatten_verified")
+
+
+def open_exposure_runs(conn: sqlite3.Connection, target_id: str):
+    """Non-COMPLETE live runs for this target that may have left a book on the exchange."""
+    placeholders = ",".join("?" for _ in EXPOSURE_STATUSES)
+    return conn.execute(
+        "SELECT run_id,started_utc,finished_utc,status,message FROM execution_runs "
+        f"WHERE target_id=? AND dry_run=0 AND status IN ({placeholders}) ORDER BY started_utc DESC",
+        (target_id, *EXPOSURE_STATUSES),
+    ).fetchall()
+
+
 def select_execution_run(conn: sqlite3.Connection, target_id: str, run_id: str | None = None):
     if run_id:
         return conn.execute(
@@ -88,6 +110,24 @@ def main() -> int:
         print("No testnet execution audit exists yet; nothing to reconcile.")
         return 0
     conn = sqlite3.connect(args.audit)
+    # LOUD FIRST: any run that ended in a hand-off state is live exposure that a
+    # COMPLETE-only lookup would silently skip. Report it before anything else, and never
+    # exit 0 while one exists.
+    exposure = open_exposure_runs(conn, target.target_id)
+    if exposure and not args.run_id:
+        newest = exposure[0]
+        held_row = next((r for r in conn.execute(
+            "SELECT phase,positions_json FROM position_snapshots WHERE run_id=? ORDER BY captured_utc DESC", (newest[0],)
+        ).fetchall() if r[0] in HELD_PHASES), None)
+        held = json.loads(held_row[1]) if held_row else None
+        print(json.dumps({
+            "ATTENTION": "target has a run that ended in a hand-off state; positions may be live and unhedged",
+            "target_id": target.target_id,
+            "runs_with_open_exposure": [dict(zip(("run_id", "started_utc", "finished_utc", "status", "message"), r)) for r in exposure],
+            "positions_held_at_handoff": held if held is not None else "NO POSITION SNAPSHOT RECORDED - query the exchange directly",
+            "action": "inspect the exchange, decide flatten/keep manually, then reconcile with --run-id if a later COMPLETE run exists",
+        }, indent=2, default=str))
+        return 3
     row = select_execution_run(conn, target.target_id, args.run_id)
     if not row:
         print(f"No execution run exists for frozen target {target.target_id}.")
@@ -102,7 +142,12 @@ def main() -> int:
         "WHERE run_id=? ORDER BY sequence", (run_id,),
     ).fetchall()
     snapshots = conn.execute("SELECT phase,captured_utc,positions_json FROM position_snapshots WHERE run_id=? ORDER BY captured_utc", (run_id,)).fetchall()
-    final_snapshot = next((item for item in reversed(snapshots) if item[0] == "after_orders"), None)
+    # What is held at the end: after_orders for a normal run; for hand-off runs the
+    # cancel-only / flatten snapshots are the truth. Never default to "nothing".
+    final_snapshot = next(
+        (item for phase in HELD_PHASES for item in reversed(snapshots) if item[0] == phase),
+        None,
+    )
     contract_snapshot = next((item for item in reversed(snapshots) if item[0] == "execution_contract"), None)
     verification_snapshot = next((item for item in reversed(snapshots) if item[0] == "target_verification"), None)
     actual = _position_map(final_snapshot[2]) if final_snapshot else {}
