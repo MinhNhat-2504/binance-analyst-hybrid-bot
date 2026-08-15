@@ -24,6 +24,10 @@ build/
 bot_runtime_state_*.json
 shadow_ledger_*.csv
 nhat_ky_trade_*.txt
+.execution/
+market_data/
+market_data_collector_state.json
+execution/carry_targets_latest.json
 
 # IDE
 .vscode/

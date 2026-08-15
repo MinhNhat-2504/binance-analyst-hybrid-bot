@@ -1,0 +1,17 @@
+{
+  "version": "FUTURES_MICROSTRUCTURE_COLLECTION_V1",
+  "source": "public_binance_usdm_production_market_data_only",
+  "websocket_base": "wss://fstream.binance.com/stream?streams=",
+  "depth_levels": 10,
+  "depth_stream_interval": "1000ms",
+  "snapshot_min_interval_seconds": 5,
+  "rotate_minutes": 60,
+  "max_disk_gb": 100,
+  "symbols": [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "NEARUSDT", "ADAUSDT",
+    "LTCUSDT", "BCHUSDT", "DOTUSDT", "ATOMUSDT", "UNIUSDT", "FILUSDT", "TRXUSDT", "ETCUSDT", "XLMUSDT", "APTUSDT",
+    "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT", "TIAUSDT", "SEIUSDT", "RUNEUSDT", "AAVEUSDT", "WIFUSDT", "CRVUSDT"
+  ],
+  "storage": "market_data",
+  "notes": "Depth snapshots are sampled to bound disk use; every received all-market liquidation event is persisted. Binance's all-market forceOrder stream is throttled to at most one event per symbol per second, so cascade counts are lower bounds. Gaps/reconnects are written to both streams. This collector has no credentials and no order-placement capability."
+}
