@@ -756,6 +756,9 @@ def test_kill_switch_write_failure_after_verified_book_halts_and_keeps_positions
 
 
 def test_from_env_never_falls_back_to_legacy_credentials(monkeypatch) -> None:
+    # Isolate from the operator's real .env.testnet on this machine.
+    import execution.binance_futures as bf
+    monkeypatch.setattr(bf, "_load_dotenv_testnet", lambda: None)
     monkeypatch.delenv("BINANCE_TESTNET_API_KEY", raising=False)
     monkeypatch.delenv("BINANCE_TESTNET_API_SECRET", raising=False)
     monkeypatch.setenv("BINANCE_API_KEY", "production-key")
