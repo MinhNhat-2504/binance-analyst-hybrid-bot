@@ -94,3 +94,32 @@ Một cell mới đã được đăng ký trước để kiểm tra giả thuy�
 Turnover 8h chỉ tăng khoảng 1.51x, không phải 3x, vì rank funding-7d gần như không đổi giữa hai settlement. Tuy vậy hiệu quả vẫn thua daily rõ ràng; latency thêm một bar 8h còn làm Sharpe tăng từ 0.84 lên 1.13. Double-holdout 8h có association p=0.2875 và net-profit block p=0.302; ở stress 20bps, mean chỉ còn +0.30bps/bar và net-profit p tăng lên 0.452. Bằng chứng này đóng giả thuyết “có thông tin ở scale 8h cần rebalance nhanh để thu hoạch”. Không chọn biến thể khác, không promote, và không thay đổi route daily đang paper.
 
 Sau report đầu, protocol chỉ được harden theo hai điểm không tune signal: thêm null block-bootstrap một phía cho mean **net sau phí**, và bắt buộc refresh/kiểm tra funding tail để không âm thầm bỏ 40 bar cuối. Null circular-shift cũ vẫn được giữ và ghi đúng nhãn là test signal-association với cost path cố định.
+
+## Hai hướng mở rộng đã đo (16/08/2026): cả hai đóng
+
+Đo trong lúc chờ paper CARRY-7d, trên cùng harness, grid đăng ký trước, discovery 42 + hold-out 33, 600 ngày. Không đụng paper.
+
+### Spot–perp basis carry (cash-and-carry) — ĐÓNG vì phí và regime
+
+Long spot / short perp top-k theo funding 7d, hold H ngày; k∈{5,10}, H∈{1,3,7}; phí 4 chân 19bps/đơn vị turnover (spot 10+2, perp 5+2), stress ×1.5. File: `honest/basis.py`, `run_basis_lab.py`, `basis_lab_report.json`.
+
+| | Funding thu được (trần, trước phí) | Phí | Kết quả tốt nhất |
+|---|---|---|---|
+| Discovery | +3.8…+5.2%/năm notional | 10.7…35%/năm | k10-H7: −6.9% notional, Sharpe −4.5 |
+| Hold-out | +2.9…+5.8%/năm | 9…29%/năm | k10-H7: −5.6%, Sharpe −2.8 |
+| Market-carry (không chọn lọc) | +2.3…+2.7% | 4.8…6.0% | âm cả hai universe |
+
+Kết luận không cần p-value: chân funding thu được **chưa bao giờ** vượt phí 4 chân, và ROE sau chia capital (1.5×) thua cả gửi USDT 5–8%. Đây là chuyện *regime* (funding 2025–26 thấp) + *phí spot 10bps*, không phải chuyện chọn đúng đồng. Trigger để xem lại: khi funding trung bình thị trường > ~15%/năm kéo dài (kiểu 2021, đầu 2024). Bài học kỹ thuật: null hoán-vị-cột **sai** cho chiến lược một chiều (null được short cả đồng funding âm → trả funding → sụp giả); null đúng là chọn ngẫu nhiên *trong* nhóm đủ điều kiện.
+
+### Vol-targeting overlay cho CARRY-7d — ĐÓNG vì không có timing value nhất quán
+
+Scale gross = target_vol / vol thực 20 ngày (lag 1), floor 0.25, cap 2.0; target ∈ {10%, 15%}. So với **đòn bẩy cố định cùng gross trung bình** để tách timing khỏi leverage. File: `run_carry_voltarget.py`, `carry_voltarget_report.json`.
+
+| | dSharpe vs const | dMaxDD | dWorst-day | Halves |
+|---|---|---|---|---|
+| Discovery VT-10/15 | −0.03 / −0.05 | 0 / −0.2pp | **−96 / −152bps (tệ hơn)** | h1 tốt hơn, h2 kém hơn |
+| Hold-out VT-10/15 | +0.33 / +0.30 | +0.9 / +1.2pp | **−79 / −126bps (tệ hơn)** | h1 tốt hơn, h2 kém hơn |
+
+Không nhất quán giữa universe, và **ngày tệ nhất luôn tệ hơn** ở cả 4 cell: vol-target nâng scale trong lúc yên rồi bị squeeze đập đúng lúc đang ở gross cao — failure mode kinh điển của vol-targeting cho chiến lược kiểu short-vol. Nếu muốn vol thấp hơn, đòn bẩy cố định 0.65× cho cùng Sharpe, đơn giản hơn, rẻ hơn. Không đưa vào paper-v2.
+
+**Điểm chung của hai kết quả:** harness `honest/` giờ trả lời một ý tưởng mới trong ~1 ngày với cùng chuẩn (null + hold-out + halves + cost stress). Đó là lý do kết quả âm cũng có giá trị — chúng rẻ và dứt điểm.
