@@ -123,3 +123,24 @@ Scale gross = target_vol / vol thực 20 ngày (lag 1), floor 0.25, cap 2.0; tar
 Không nhất quán giữa universe, và **ngày tệ nhất luôn tệ hơn** ở cả 4 cell: vol-target nâng scale trong lúc yên rồi bị squeeze đập đúng lúc đang ở gross cao — failure mode kinh điển của vol-targeting cho chiến lược kiểu short-vol. Nếu muốn vol thấp hơn, đòn bẩy cố định 0.65× cho cùng Sharpe, đơn giản hơn, rẻ hơn. Không đưa vào paper-v2.
 
 **Điểm chung của hai kết quả:** harness `honest/` giờ trả lời một ý tưởng mới trong ~1 ngày với cùng chuẩn (null + hold-out + halves + cost stress). Đó là lý do kết quả âm cũng có giá trị — chúng rẻ và dứt điểm.
+
+### Cross-exchange (Binance vs Bybit, 577 ngày chung; OKX chỉ có ~90 ngày funding public nên bỏ) — 16/08/2026
+
+File: `honest/crossex.py`, `run_crossex_lab.py`, `crossex_lab_report.json`.
+
+**B. Chênh funding giữa sàn — ĐÓNG.** Trần |funding Binance − Bybit| chỉ 3.5–5.9%/năm notional, thấp hơn phí 2 chân 28bps/vòng; 8/8 cell âm cả hai universe. Hai sàn đã arbitrage funding với nhau — không còn gì để thu.
+
+**A. Universality của CARRY-7d — kết quả quan trọng nhất hôm nay, đọc bằng bảng 2×2:**
+
+| weight từ funding → áp lên giá | Discovery | Hold-out |
+|---|---|---|
+| Binance → Binance | 1.75 | 1.85 |
+| **Binance → Bybit** | **1.61** | **1.70** |
+| Bybit → Binance | 1.09 | −0.35 |
+| Bybit → Bybit | 1.07 | −0.29 |
+
+Funding hai sàn tương quan 0.93, chọn trùng ~57% tên, nhưng chỉ **xếp hạng theo funding Binance** mới mang tín hiệu. Hai hệ quả:
+1. *Tốt:* chiến lược không phụ thuộc sàn thực thi — weight Binance áp lên giá Bybit vẫn giữ ~90% Sharpe. Giá không phải artifact; có thể chạy trên Bybit nếu cần (phí/thanh khoản khác).
+2. *Điểm yếu có tên:* edge sống nhờ **chất lượng thông tin trong funding Binance** (sàn có OI alt lớn nhất → funding phản ánh crowding thật), không phải "funding nói chung". Nếu Binance đổi cơ chế funding (cap, chu kỳ 4h…) hoặc dòng tiền dịch sàn, tín hiệu có thể phai. Không phải refutation; là rủi ro cấu trúc cần theo dõi. Canary đề xuất: theo dõi định kỳ hiệu năng "Bybit-funding weights" — nếu nó bắt đầu ngang Binance, tín hiệu đang lan rộng (tốt); nếu Binance tụt về mức Bybit, tín hiệu đang phai.
+
+**Tổng kết ngày 16/08:** 3 họ ý tưởng đo trong một ngày (basis carry, vol-target, cross-exchange), cả 3 đóng như chiến lược mới; nhưng cross-exchange cho CARRY-7d một bài kiểm tra độc lập đạt (thực thi được trên sàn khác) và một điểm yếu được gọi tên. Hạn mức ≤3 họ/quý đã dùng hết — **không mở cell mới cho tới tháng 10.**
