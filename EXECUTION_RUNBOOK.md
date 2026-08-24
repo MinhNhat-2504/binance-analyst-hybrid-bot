@@ -6,6 +6,8 @@ Nguyên tắc duy nhất cần nhớ: engine chỉ tự thanh lý (flatten) khi 
 
 ## Điều kiện tiên quyết
 
+- **Vốn tối thiểu cho đủ rổ: ~$1,800** (BTC min-notional $100 / weight nhỏ nhất 5.56%). Dưới mức này executor TỪ CHỐI cả danh mục (below_min_notional) thay vì chạy thiếu chân — đã xảy ra đúng như vậy ngày 17/08. Con số này cũng là sàn cho ceiling LIVE sau này.
+
 - **Tài khoản testnet riêng**, không dùng chung với thứ gì khác. Engine coi *mọi* lệnh chờ trên toàn tài khoản là lý do halt (đúng thiết kế) — tài khoản dùng chung sẽ halt liên tục.
 - Chế độ **one-way** (`--set-one-way-mode` một lần). Hedge mode bị từ chối.
 - Chỉ đặt `BINANCE_TESTNET_API_KEY` / `BINANCE_TESTNET_API_SECRET`. Không đặt `BINANCE_LIVE_*` cho tới khi có ceilings v2.
@@ -21,8 +23,8 @@ Nó **tự tắt** ngày `execution_ceilings` khai live > 0 — không cần nh�
 ```
 python export_carry_targets.py                       # weight hôm nay từ paper state
 python run_testnet_execution.py --plan               # xem legs / skips / drift TRƯỚC khi mở khóa
-python run_testnet_execution.py --release-kill-switch "rehearsal 2026-08-16" --authorize-budget-usd 500
-python run_testnet_execution.py --execute --budget-usd 500 --confirm-testnet I_ACCEPT_TESTNET_ORDERS
+python run_testnet_execution.py --release-kill-switch "rehearsal" --authorize-budget-usd 2000
+python run_testnet_execution.py --execute --budget-usd 2000 --confirm-testnet I_ACCEPT_TESTNET_ORDERS
 python reconcile_paper_vs_testnet.py                 # exit 0 = khớp contract; 2 = lệch; 3 = có hand-off state
 ```
 
@@ -67,7 +69,7 @@ Bạn đang cầm một danh mục market-neutral **chưa hoàn thành** — có
 ## Những thứ engine cố tình KHÔNG làm
 
 - Không tự chạy lại sau halt. Mọi lần chạy đều cần release mới.
-- Không tự nâng budget. `--budget-usd` phải **bằng đúng** số đã release (`--authorize-budget-usd`), và cả hai phải ≤ ceiling trong `execution_ceilings_v1.json` (hiện testnet 500, live **0**). Đổi file đó = đổi hash mọi contract tương lai = sự kiện có review, không phải knob. Khi ra `execution_ceilings_v2.json`, giữ nguyên v1 để reconcile được các run cũ.
+- Không tự nâng budget. `--budget-usd` phải **bằng đúng** số đã release (`--authorize-budget-usd`), và cả hai phải ≤ ceiling trong `execution_ceilings_v1.json` (hiện testnet 2000, live **0**). Đổi file đó = đổi hash mọi contract tương lai = sự kiện có review, không phải knob. Khi ra `execution_ceilings_v2.json`, giữ nguyên v1 để reconcile được các run cũ.
 - Không tự quyết "lỗi nhỏ thì kệ". Mọi status không phải COMPLETE đều cần bạn đọc.
 
 ## Trước khi bàn chuyện live

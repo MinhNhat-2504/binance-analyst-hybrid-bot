@@ -327,7 +327,7 @@ def test_reconciler_uses_exact_contract_vector_and_rejects_right_shape_wrong_sca
         "target_id": "target",
         "authorized_budget_usd": 100,
         "effective_gross_budget_usd": 100,
-        "frozen_testnet_gross_ceiling_usd": 500,
+        "frozen_testnet_gross_ceiling_usd": 2000,
         "expected_positions": {"AAAUSDT": "0.5", "BBBUSDT": "-1"},
         "tolerance_budgets": {
             "AAAUSDT": {"step_size": "0.1", "min_qty": "0.1", "min_notional": "5", "rounding_steps": "0.5", "min_notional_fraction": "0.01"},
@@ -940,9 +940,9 @@ def test_ceilings_file_cannot_raise_above_code_bound_and_live_defaults_to_zero(t
     """Two locks: the JSON holds the reviewed number, the code holds an absolute sanity
     bound the JSON cannot exceed. And live is 0.0 until a v2 file is issued on purpose."""
     from execution.contracts import ABSOLUTE_GROSS_UPPER_BOUND_USD, frozen_ceiling, load_ceilings
-    # Shipped file: testnet 500, live 0, both under the bound.
+    # Shipped file: testnet 2000 (min viable CARRY book ~$1,800, see ceilings notes), live 0.
     ceilings, sha = load_ceilings()
-    assert ceilings["testnet"] == 500.0 and ceilings["live"] == 0.0
+    assert ceilings["testnet"] == 2000.0 and ceilings["live"] == 0.0
     assert len(sha) == 64
     assert frozen_ceiling("live") == 0.0
     # A file that tries to authorise more than the code bound is refused at load.
