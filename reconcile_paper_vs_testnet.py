@@ -9,7 +9,7 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
-from execution.contracts import CEILINGS_SHA256, EXPOSURE_STATUSES as _EXPOSURE_STATUSES, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
+from execution.contracts import CEILINGS_SHA256, EXPOSURE_STATUSES as _EXPOSURE_STATUSES, FROZEN_TESTNET_GROSS_CEILING_USD, frozen_ceiling, quantity_tolerance
 from execution.targets import load_target_book
 
 
@@ -161,11 +161,13 @@ def main() -> int:
     try:
         authorized_budget = float(contract["authorized_budget_usd"])
         effective_budget = float(contract["effective_gross_budget_usd"])
-        frozen_ceiling = float(contract["frozen_testnet_gross_ceiling_usd"])
+        env = str(contract.get("environment", "testnet"))
+        recorded_ceiling = float(contract.get("frozen_gross_ceiling_usd",
+                                              contract.get("frozen_testnet_gross_ceiling_usd")))
         authorization_ok = (
             authorized_budget > 0
-            and 0 < effective_budget <= authorized_budget <= frozen_ceiling
-            and frozen_ceiling == FROZEN_TESTNET_GROSS_CEILING_USD
+            and 0 < effective_budget <= authorized_budget <= recorded_ceiling
+            and recorded_ceiling == frozen_ceiling(env)
             and contract.get("ceilings_file_sha256", CEILINGS_SHA256) == CEILINGS_SHA256
         )
     except (KeyError, TypeError, ValueError):

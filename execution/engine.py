@@ -17,8 +17,8 @@ from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any, Callable
 
-from .binance_futures import PAPER_BASE_URLS, BinanceAPIError, FuturesREST
-from .contracts import CEILINGS_SHA256, FROZEN_TESTNET_GROSS_CEILING_USD, quantity_tolerance
+from .binance_futures import LIVE_BASE_URL, PAPER_BASE_URLS, BinanceAPIError, FuturesREST
+from .contracts import CEILINGS_SHA256, FROZEN_TESTNET_GROSS_CEILING_USD, frozen_ceiling, quantity_tolerance
 from .targets import TargetBook
 
 
@@ -66,11 +66,19 @@ class ExecutionPolicy:
     poll_seconds: float = 1.0
 
     def __post_init__(self) -> None:
-        if self.environment != "testnet":
-            raise ValueError("this executor is testnet-only; production is intentionally blocked")
+        if self.environment not in ("testnet", "live"):
+            raise ValueError(f"unknown environment {self.environment!r}")
+        if self.environment == "live" and frozen_ceiling("live") <= 0:
+            # The live path EXISTS so it can be reviewed and tested in calm, but it cannot
+            # be armed by code: only a reviewed ceilings file declaring live > 0 unlocks
+            # it. Today that file says 0.0 on purpose.
+            raise ValueError(
+                "live is not authorized: execution_ceilings declares live=0. Issuing a "
+                "reviewed ceilings revision with a positive live number is the only unlock."
+            )
         if self.max_gross_notional_usd <= 0 or self.max_order_notional_usd <= 0:
             raise ValueError("notional limits must be positive")
-        if self.max_gross_notional_usd > FROZEN_TESTNET_GROSS_CEILING_USD:
+        if self.max_gross_notional_usd > frozen_ceiling(self.environment):
             raise ValueError(
                 f"max_gross_notional_usd exceeds frozen testnet ceiling "
                 f"${FROZEN_TESTNET_GROSS_CEILING_USD:.2f}"
@@ -182,8 +190,11 @@ class ExternalPositionDriftError(RuntimeError):
 class KillSwitch:
     """A missing or malformed file halts execution.  This is intentionally fail-closed."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, environment: str = "testnet") -> None:
+        if environment not in ("testnet", "live"):
+            raise ValueError(f"unknown environment {environment!r}")
         self.path = Path(path)
+        self.environment = environment
 
     def assert_released_for_testnet(
         self, *, max_age_seconds: int | None = None, now: datetime | None = None,
@@ -192,7 +203,7 @@ class KillSwitch:
         if not self.path.exists():
             raise RuntimeError(f"kill switch missing: {self.path}; execution remains halted")
         payload = json.loads(self.path.read_text(encoding="utf-8"))
-        if payload.get("environment") != "testnet" or payload.get("trading_enabled") is not True:
+        if payload.get("environment") != self.environment or payload.get("trading_enabled") is not True:
             raise RuntimeError(f"kill switch is engaged: {payload.get('reason', 'no reason')}")
         if expected_target_id is not None and payload.get("authorized_target_id") != expected_target_id:
             raise RuntimeError("kill switch release is bound to a different target_id")
@@ -211,7 +222,7 @@ class KillSwitch:
 
     def engage(self, reason: str) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._atomic_write({"environment": "testnet", "trading_enabled": False, "reason": str(reason), "engaged_utc": utc_now()})
+        self._atomic_write({"environment": self.environment, "trading_enabled": False, "reason": str(reason), "engaged_utc": utc_now()})
 
     def release(self, reason: str, *, target_id: str, authorized_budget_usd: float) -> None:
         if not reason.strip():
@@ -220,7 +231,7 @@ class KillSwitch:
             raise ValueError("release requires a target_id and positive authorized budget")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._atomic_write({
-            "environment": "testnet", "trading_enabled": True, "reason": str(reason),
+            "environment": self.environment, "trading_enabled": True, "reason": str(reason),
             "authorized_target_id": target_id, "authorized_budget_usd": float(authorized_budget_usd),
             "released_utc": utc_now(),
         })
@@ -343,17 +354,20 @@ def parse_utc(value: str) -> datetime:
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
-class TestnetExecutor:
+class PortfolioExecutor:
     __test__ = False
 
     def __init__(self, client: FuturesREST, policy: ExecutionPolicy, kill_switch: KillSwitch, audit: ExecutionAudit, *, now: Callable[[], datetime] | None = None) -> None:
-        if client.environment != "testnet" or policy.environment != "testnet":
-            raise ValueError("TestnetExecutor refuses any non-testnet client or policy")
-        # A real REST client also has to be POINTED at testnet, not merely labelled testnet.
+        if client.environment != policy.environment:
+            raise ValueError(f"client environment {client.environment!r} != policy environment {policy.environment!r}")
+        if getattr(kill_switch, "environment", "testnet") != policy.environment:
+            raise ValueError("kill switch belongs to a different environment; refusing cross-armed execution")
+        # A real REST client also has to be POINTED at the right host, not merely labelled.
         # Fakes in tests carry no base_url and are exempt; anything with one must match.
         base_url = getattr(client, "base_url", None)
-        if base_url is not None and str(base_url) not in PAPER_BASE_URLS:
-            raise ValueError(f"TestnetExecutor refuses a client whose base_url is not a paper host: {base_url}")
+        allowed = PAPER_BASE_URLS if policy.environment == "testnet" else (LIVE_BASE_URL,)
+        if base_url is not None and str(base_url) not in allowed:
+            raise ValueError(f"executor refuses a client whose base_url is not a {policy.environment} host: {base_url}")
         self.client, self.policy, self.kill_switch, self.audit = client, policy, kill_switch, audit
         self._now = now or (lambda: datetime.now(timezone.utc))
 
@@ -616,6 +630,8 @@ class TestnetExecutor:
             "target_id": book.target_id,
             "authorized_budget_usd": float(approval["authorized_budget_usd"]),
             "effective_gross_budget_usd": plan.gross_budget,
+            "environment": self.policy.environment,
+            "frozen_gross_ceiling_usd": frozen_ceiling(self.policy.environment),
             "frozen_testnet_gross_ceiling_usd": FROZEN_TESTNET_GROSS_CEILING_USD,
             "ceilings_file_sha256": CEILINGS_SHA256,
             "expected_positions": {symbol: str(quantity) for symbol, quantity in plan.expected_positions.items()},
@@ -1071,3 +1087,13 @@ class TestnetExecutor:
                 except BaseException:
                     pass
             raise
+
+
+class TestnetExecutor(PortfolioExecutor):
+    """The testnet-pinned executor every existing script and test uses. Refuses anything
+    that is not testnet end to end, exactly as before the live path existed."""
+
+    def __init__(self, client: FuturesREST, policy: ExecutionPolicy, kill_switch: KillSwitch, audit: ExecutionAudit, *, now: Callable[[], datetime] | None = None) -> None:
+        if client.environment != "testnet" or policy.environment != "testnet":
+            raise ValueError("TestnetExecutor refuses any non-testnet client or policy")
+        super().__init__(client, policy, kill_switch, audit, now=now)
