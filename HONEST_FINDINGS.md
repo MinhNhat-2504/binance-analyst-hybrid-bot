@@ -1,6 +1,6 @@
 # Kết luận điều tra: Tại sao bot chưa có lãi — và tại sao không nên tune tiếp
 
-*Hoàn tất 2026-08-02. Mọi con số dưới đây đo bằng harness leak-free (`honest/`), purged walk-forward, sau phí, đối chiếu permutation null. File kết quả gốc được dẫn kèm từng mục.*
+*File JSON bằng chứng nằm trong `reports/`. Hoàn tất 2026-08-02. Mọi con số dưới đây đo bằng harness leak-free (`honest/`), purged walk-forward, sau phí, đối chiếu permutation null. File kết quả gốc được dẫn kèm từng mục.*
 
 ---
 

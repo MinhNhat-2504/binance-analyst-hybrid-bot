@@ -1,0 +1,66 @@
+{
+  "version": "ROUTE_ROUTER_V2",
+  "proof_window_closed_trades": 60,
+  "default": {
+    "mode": "RESEARCH_ONLY",
+    "min_proba": 1.01,
+    "max_stop_hit_probability": 0.0,
+    "size_multiplier": 0.0
+  },
+  "routes": {
+    "MIRROR_SHORT": {
+      "mode": "PAPER_ONLY",
+      "min_proba": 0.82,
+      "max_stop_hit_probability": 0.58,
+      "size_multiplier": 0.1,
+      "allow_unvalidated_model_for_paper": true,
+      "min_closed_proof": 30,
+      "min_pf": 1.25,
+      "min_distinct_days": 3,
+      "max_proof_age_hours": 168,
+      "max_drawdown": 0.03
+    },
+    "CANARY_MIRROR": {
+      "mode": "PAPER_ONLY",
+      "min_proba": 0.9,
+      "max_stop_hit_probability": 0.52,
+      "size_multiplier": 0.05,
+      "allow_unvalidated_model_for_paper": true,
+      "min_closed_proof": 2,
+      "min_pf": 1.0,
+      "min_distinct_days": 1,
+      "max_proof_age_hours": 0,
+      "max_drawdown": 0.01
+    },
+    "CANARY_EXACT_BUCKET": {
+      "mode": "PAPER_ONLY",
+      "min_proba": 0.75,
+      "max_stop_hit_probability": 0.52,
+      "size_multiplier": 0.05,
+      "allow_unvalidated_model_for_paper": true,
+      "min_closed_proof": 0,
+      "min_pf": 0.0,
+      "min_distinct_days": 0,
+      "max_proof_age_hours": 0,
+      "max_drawdown": 0.0
+    },
+    "STRICT_PROMOTE": {
+      "mode": "RESEARCH_ONLY",
+      "min_proba": 0.9,
+      "max_stop_hit_probability": 0.4,
+      "size_multiplier": 0.0
+    },
+    "DISCOVERY": {
+      "mode": "RESEARCH_ONLY",
+      "min_proba": 0.95,
+      "max_stop_hit_probability": 0.35,
+      "size_multiplier": 0.0
+    },
+    "SCOUT": {
+      "mode": "DISABLED",
+      "min_proba": 1.01,
+      "max_stop_hit_probability": 0.0,
+      "size_multiplier": 0.0
+    }
+  }
+}

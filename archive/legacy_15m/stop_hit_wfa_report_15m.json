@@ -1,0 +1,26 @@
+{
+  "data_stats": {
+    "raw_rows": 8011,
+    "executable_closed_before_dedup": 130,
+    "training_rows_after_dedup": 127,
+    "deduplicated_rows": 3,
+    "positive_stop_hit_rows": 60
+  },
+  "validation_summary": {
+    "folds": 0,
+    "oos_rows": 0,
+    "auc": NaN,
+    "brier": NaN,
+    "baseline_brier": NaN,
+    "deployment_eligible": false,
+    "reason": "NO_VALID_PURGED_FOLDS"
+  },
+  "folds": [],
+  "route_counts": {
+    "DISCOVERY": 57,
+    "MIRROR_SHORT": 38,
+    "STRICT_PROMOTE": 28,
+    "SCOUT": 2,
+    "CANARY_MIRROR": 2
+  }
+}

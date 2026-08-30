@@ -39,3 +39,8 @@ execution/carry_targets_latest.json
 # OS
 .DS_Store
 Thumbs.db
+
+# archived runtime/caches
+archive/legacy_15m/.exit_ab_kline_cache/
+archive/collector/market_data/
+archive/legacy_15m/*.ipynb

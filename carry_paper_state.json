@@ -1,0 +1,29 @@
+{
+  "config_sha256": "25815e02b98e5cb072bea5e8c2e6ea1aaf3240c89758e3dc51e2aad6ff80ad47",
+  "started_utc": "2026-08-09T00:06:14+00:00",
+  "last_signal_day": "2026-08-27",
+  "weights": {
+    "NEARUSDT": 0.0625,
+    "BCHUSDT": -0.055556,
+    "ATOMUSDT": 0.0625,
+    "UNIUSDT": -0.055556,
+    "TRXUSDT": 0.0625,
+    "ETCUSDT": -0.055556,
+    "XLMUSDT": -0.055556,
+    "APTUSDT": 0.0625,
+    "ARBUSDT": 0.0625,
+    "TIAUSDT": 0.0625,
+    "RUNEUSDT": 0.0625,
+    "SANDUSDT": 0.0625,
+    "MANAUSDT": -0.055556,
+    "GALAUSDT": -0.055556,
+    "1000PEPEUSDT": -0.055556,
+    "ENAUSDT": -0.055556,
+    "ORDIUSDT": -0.055556
+  },
+  "equity": 1.0071223597765488,
+  "paper_period_start_utc": "2026-08-03T00:00:00+00:00",
+  "ledger_rebuilt_utc": "2026-08-15T10:06:48+00:00",
+  "ledger_rebuild_reason": "partial-mark fix: ledger regenerated deterministically from public data; PnL delta vs original ~0.005%",
+  "bookkeeping_fix_2026_08_16": "last_signal_day was 2026-08-13 while ledger ended at 12 (break-before-record bug); reset to 12 so catch-up books 13. No PnL changed."
+}

@@ -1,0 +1,19 @@
+{
+  "status": "IDLE",
+  "cycle_id": "20260612T081308.307172Z",
+  "cycle_started_utc": "2026-06-12T08:13:08.307172+00:00",
+  "cycle_finished_utc": "2026-06-12T08:18:25.708726+00:00",
+  "last_progress_utc": "2026-06-12T08:18:25.709743+00:00",
+  "last_ledger_mtime_utc": "2026-06-12T08:18:25.707727+00:00",
+  "last_symbol": "ONDOUSDT",
+  "scanned_symbols": 27,
+  "expected_symbols": 27,
+  "consecutive_failures": 0,
+  "last_error": "",
+  "policy_version": "CANARY_CAP_V1|STORM_LOCK_V2|EXEC_ONLY_VIEW_V1|CANARY_KILL_SWITCH_V1|POLICY_FREEZE_GUARD_V1|HEARTBEAT_V1|ROUTE_ROUTER_V2|PROVEN_BUCKET_CANARY_V1|CANARY_PROBATION_OVERRIDE_V1|BACKFILL_PRIORITY_V2|STOP_HIT_V1|EVENT_PURGED_WFA_V1",
+  "process_id": 2532,
+  "working_directory": "D:\\Project\\AI Engineer\\Binance-Analyst",
+  "python_executable": "C:\\Users\\Minh Nhat\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  "ledger_path": "D:\\Project\\AI Engineer\\Binance-Analyst\\shadow_ledger_candidates_v4.csv",
+  "notebook_mtime_utc": "2026-06-12T05:35:58.638738+00:00"
+}

@@ -1,0 +1,102 @@
+[
+    {
+        "symbol": "ADAUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "AVAXUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "BNBUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "BTCUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "DOGEUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "ETHUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "LINKUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "NEARUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "SOLUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "XRPUSDT",
+        "regime": "0",
+        "side": "LONG"
+    },
+    {
+        "symbol": "ADAUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "AVAXUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "BNBUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "BTCUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "DOGEUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "ETHUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "LINKUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "NEARUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "SOLUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    },
+    {
+        "symbol": "XRPUSDT",
+        "regime": "0",
+        "side": "SHORT"
+    }
+]

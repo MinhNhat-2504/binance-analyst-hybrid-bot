@@ -43,7 +43,9 @@ python run_carry_paper.py --status   # xem đang ở ngày bao nhiêu, lãi lỗ
 - `run_daily_lab.py` / `run_carry_holdout.py` — grid chiến lược daily đã đăng ký trước + kiểm hold-out.
 - `run_carry_paper.py` + `carry_paper_config_v1.json` — executor paper trading, fill tại open ngày kế tiếp, có khóa chống tune.
 - `run_clean_oos.py` — pipeline OOS độc lập (một nhánh kiểm tra song song, kết luận tương tự).
-- `binance-analyst.ipynb`, `Model_Training_Lab.ipynb` — bot 15m cũ và notebook train. Giữ lại để tham khảo, **đừng tin số trong đó** — xem HONEST_FINDINGS.md để biết vì sao.
+- `archive/legacy_15m/` — toàn bộ bot 15m cũ (notebook, model, config, script chẩn đoán). Giữ để tham khảo, **đừng tin số trong đó** — xem HONEST_FINDINGS.md. `archive/collector/` — bộ ghi order-book, đóng vì ISP chặn futures WebSocket.
+- `reports/` — JSON kết quả của mọi lab đã chạy (bằng chứng cho HONEST_FINDINGS.md).
+- `status.py` — một lệnh xem toàn cảnh paper/testnet/canary/fill. `EXECUTION_RUNBOOK.md`, `GO_LIVE_CHECKLIST.md` — vận hành và quyết định lên live.
 
 ## Bài học rút ra (tóm tắt cho đỡ đọc file dài)
 

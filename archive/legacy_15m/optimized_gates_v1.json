@@ -1,0 +1,27 @@
+{
+    "SHORT_Regime0": {
+        "Min_Proba": 0.82,
+        "Min_EV": null,
+        "EV_Active": false,
+        "Live_Allowed": false,
+        "Paper_Allowed": true,
+        "Execution_Mode": "PAPER_ONLY",
+        "Size_Multiplier": 0.25,
+        "Pocket_Status": "RESEARCH",
+        "WalkForward_Train_Size": 500,
+        "WalkForward_Validate_Size": 100,
+        "Validated_Train_PnL_bps": null,
+        "Validated_Val_PnL_bps": null,
+        "Validated_Train_PF": null,
+        "Validated_Val_PF": null,
+        "Validated_Val_WinRate": null,
+        "Validated_Val_MaxDD_bps": null,
+        "WFA_Score": null,
+        "Optimizer_PnL_Source": null,
+        "Deployment_Eligible": false,
+        "Validate_Trades": 0,
+        "WalkForward_Folds": 0,
+        "Pocket": "SHORT_Regime0",
+        "Policy": "SAFE PAPER_BOOTSTRAP_25PCT: live disabled; SHORT_Regime0 high-tail only; deploy threshold synced to 0.82 after weak active optimizer and failed low-proba scout"
+    }
+}

@@ -1,0 +1,150 @@
+{
+  "data_stats": {
+    "raw_rows": 8011,
+    "scope": "ALL_CLOSED_SHORT_REGIME0",
+    "closed_before_dedup": 2724,
+    "training_rows_after_dedup": 1522,
+    "deduplicated_rows": 1202,
+    "positive_stop_hit_rows": 842
+  },
+  "validation_summary": {
+    "folds": 12,
+    "oos_rows": 1200,
+    "auc": 0.5725880033793298,
+    "brier": 0.2763115722467462,
+    "baseline_brier": 0.24659722222222227,
+    "prevalence": 0.5583333333333333,
+    "deployment_eligible": false,
+    "reason": "INSUFFICIENT_OOS_DISCRIMINATION"
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "train_rows": 182,
+      "validation_rows": 100,
+      "auc": 0.6093938177438779,
+      "brier": 0.2634639855459129,
+      "baseline_brier": 0.24910880328462748,
+      "log_loss": 0.7332408098651892,
+      "validation_prevalence": 0.53
+    },
+    {
+      "fold": 2,
+      "train_rows": 200,
+      "validation_rows": 100,
+      "auc": 0.6816866473749483,
+      "brier": 0.22445416803301516,
+      "baseline_brier": 0.2562999999999999,
+      "log_loss": 0.6413745473452238,
+      "validation_prevalence": 0.41
+    },
+    {
+      "fold": 3,
+      "train_rows": 255,
+      "validation_rows": 100,
+      "auc": 0.7239583333333334,
+      "brier": 0.23165778805509038,
+      "baseline_brier": 0.24970396001537867,
+      "log_loss": 0.6566404371564425,
+      "validation_prevalence": 0.52
+    },
+    {
+      "fold": 4,
+      "train_rows": 266,
+      "validation_rows": 100,
+      "auc": 0.637979797979798,
+      "brier": 0.23571745002289343,
+      "baseline_brier": 0.25080841200746223,
+      "log_loss": 0.6651905833482803,
+      "validation_prevalence": 0.45
+    },
+    {
+      "fold": 5,
+      "train_rows": 266,
+      "validation_rows": 100,
+      "auc": 0.5244391025641024,
+      "brier": 0.28024142081234454,
+      "baseline_brier": 0.24975578042851487,
+      "log_loss": 0.7642730826522864,
+      "validation_prevalence": 0.52
+    },
+    {
+      "fold": 6,
+      "train_rows": 271,
+      "validation_rows": 100,
+      "auc": 0.6919070512820512,
+      "brier": 0.23752342342003666,
+      "baseline_brier": 0.25045410601707496,
+      "log_loss": 0.6688691608438845,
+      "validation_prevalence": 0.48
+    },
+    {
+      "fold": 7,
+      "train_rows": 274,
+      "validation_rows": 100,
+      "auc": 0.508499271491015,
+      "brier": 0.3322864604352976,
+      "baseline_brier": 0.2455213383771112,
+      "log_loss": 0.8740137797467138,
+      "validation_prevalence": 0.71
+    },
+    {
+      "fold": 8,
+      "train_rows": 279,
+      "validation_rows": 100,
+      "auc": 0.5730050933786078,
+      "brier": 0.34083508699707193,
+      "baseline_brier": 0.24714661939080954,
+      "log_loss": 0.8985885684859283,
+      "validation_prevalence": 0.62
+    },
+    {
+      "fold": 9,
+      "train_rows": 279,
+      "validation_rows": 100,
+      "auc": 0.7377049180327869,
+      "brier": 0.29435967453953216,
+      "baseline_brier": 0.24739751544815722,
+      "log_loss": 0.7895105178370488,
+      "validation_prevalence": 0.61
+    },
+    {
+      "fold": 10,
+      "train_rows": 279,
+      "validation_rows": 100,
+      "auc": 0.5474045474045474,
+      "brier": 0.3033670712040889,
+      "baseline_brier": 0.24689572333346188,
+      "log_loss": 0.8131320319970888,
+      "validation_prevalence": 0.63
+    },
+    {
+      "fold": 11,
+      "train_rows": 291,
+      "validation_rows": 100,
+      "auc": 0.5098901098901099,
+      "brier": 0.33321192419076723,
+      "baseline_brier": 0.24559995748751196,
+      "log_loss": 0.8810068276042904,
+      "validation_prevalence": 0.65
+    },
+    {
+      "fold": 12,
+      "train_rows": 1116,
+      "validation_rows": 100,
+      "auc": 0.6560587515299878,
+      "brier": 0.2386204137049036,
+      "baseline_brier": 0.24639238961472743,
+      "log_loss": 0.6693394490577681,
+      "validation_prevalence": 0.57
+    }
+  ],
+  "route_counts": {
+    "UNKNOWN": 1121,
+    "DISCOVERY": 197,
+    "STRICT_PROMOTE": 146,
+    "MIRROR_SHORT": 54,
+    "SCOUT": 2,
+    "CANARY_MIRROR": 2
+  }
+}
