@@ -5,6 +5,9 @@ schtasks /create /f /tn CarryPaperDaily   /tr "\"d:\Project\AI Engineer\Binance-
 schtasks /create /f /tn CarryTestnetDaily /tr "\"d:\Project\AI Engineer\Binance-Analyst\carry_testnet_task.bat\"" /sc daily /st 07:20
 schtasks /create /f /tn CarryCanaryWeekly /tr "\"d:\Project\AI Engineer\Binance-Analyst\canary_task.bat\"" /sc weekly /d SUN /st 08:00
 echo.
+rem Wake the machine for every task and run ASAP if the start was missed (schtasks /create resets these).
+powershell -NoProfile -Command "$s=New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; foreach($t in 'CarryPaperDaily','CarryTestnetDaily','CarryCanaryWeekly'){Set-ScheduledTask -TaskName $t -Settings $s | Out-Null}; foreach($t in 'CarryPaperDaily','CarryTestnetDaily','CarryCanaryWeekly'){$x=(Get-ScheduledTask $t).Settings; Write-Host $t WakeToRun=$($x.WakeToRun) RunIfMissed=$($x.StartWhenAvailable)}"
+
 echo Kiem tra:
 schtasks /query /tn CarryPaperDaily /fo list | findstr /i "TaskName Status Next"
 schtasks /query /tn CarryTestnetDaily /fo list | findstr /i "TaskName Status Next"
