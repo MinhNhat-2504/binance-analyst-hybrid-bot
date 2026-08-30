@@ -174,6 +174,13 @@ def _run() -> int:
         executor.assert_target_identity(book)
         plan = executor.execute(book, dry_run=True)
     except Exception as exc:
+        if "stale target" in str(exc):
+            # Ran too long after the daily close (machine woke late, or a manual run at
+            # noon). Nothing was placed and nothing needs a human: log it and let
+            # tomorrow's run proceed. Missed days are surfaced by status.py instead.
+            _log({"utc": started, "target_id": book.target_id, "status": "MISSED_WINDOW", "detail": str(exc)[:200]})
+            print(f"missed window (no orders, no marker): {exc}")
+            return 5
         _attention("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"})
         _log({"utc": started, "target_id": book.target_id, "status": "PLAN_REFUSED", "detail": str(exc)[:200]})
         return 5

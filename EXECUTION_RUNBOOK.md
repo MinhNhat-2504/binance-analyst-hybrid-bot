@@ -18,6 +18,10 @@ Nguyên tắc duy nhất cần nhớ: engine chỉ tự thanh lý (flatten) khi 
 
 Nó **tự tắt** ngày `execution_ceilings` khai live > 0 — không cần nhớ tắt khi lên live.
 
+**Máy phải thức lúc 07:20.** Testnet cố ý KHÔNG bù ngày thiếu (fill phải gần 00:20 UTC). Máy tắt/ngủ = ngày đó không có run, không có lỗi, không có marker — chỉ `python status.py` mới cho thấy "missed". Cần ≥20 COMPLETE trước ngày 60, nên uptime sáng ~70% là bắt buộc. Trong Task Scheduler (taskschd.msc) → task CarryTestnetDaily → Properties → Conditions: tích **"Wake the computer to run this task"**; Settings: tích **"Run task as soon as possible after a scheduled start is missed"**. Run muộn quá 6h sẽ tự ghi `MISSED_WINDOW` (không marker, không chặn ngày sau). Laptop gập nắp/hibernate thì wake không tác dụng — cắm điện, để mở.
+
+**Một lệnh xem toàn cảnh:** `python status.py` — paper/testnet/markers/canary/fills trong 6 dòng.
+
 ## Chu trình một ngày bình thường (chạy tay, nếu muốn)
 
 ```
@@ -39,6 +43,7 @@ Kill-switch tự **bật lại** sau mỗi run thành công. Release hết hạn
 | `COMPLETE` | = contract, đã verify | Ngày bình thường | Chạy reconcile; xong |
 | `DRY_RUN` | không đổi | `--plan` | Không có gì |
 | `FAILED` | **tùy** — xem `orders_started` trong audit/sidecar | Hoặc abort ở giai đoạn plan (drift, thiếu reference, target cũ, budget không khớp, hedge mode) → không có gì trên sàn; **hoặc** lỗi sau khi có lệnh mà engine đã flatten thành công → sàn flat nhưng bạn đã trả phí một vòng | Đọc message. Nếu có snapshot `emergency_flatten_verified` → đã thanh lý, điều tra nguyên nhân trước khi chạy lại. Nếu không → chỉ là abort plan, sửa rồi chạy lại |
+| `MISSED_WINDOW` (log tự động) | không đổi | Run muộn >6h sau close (máy ngủ, wake trễ, chạy tay buổi chiều). Không marker, không chặn ngày sau | Không làm gì; đảm bảo máy thức 07:20 |
 | `PLAN_REFUSED` (chỉ ở log tự động) | không đổi | Bước plan từ chối trước khi mở khóa — thường gặp nhất là **target quá 6h** (chạy tay lúc chiều/tối, hoặc máy tắt qua giờ 07:20). Không có gì trên sàn | Nếu do chạy tay: bỏ qua, sáng mai task tự chạy đúng giờ. Nếu task tự động vẫn báo: kiểm `export_carry_targets.py` có ra ngày signal hôm qua không |
 | `RUNNING` (không đổi sau nhiều phút) | **không rõ** | Process chết giữa chừng (mất điện, taskkill). Reconciler coi đây là exposure | Vào sàn xem thật; xử lý như `HALTED_MID_BOOK` |
 | **`HALTED_MID_BOOK`** | **một phần book, lệch** | Đang đặt lệnh thì: kill-switch hết hạn / bị bật tay, market data mất trước POST, lệnh chờ lạ xuất hiện, slippage vượt ngưỡng, hoặc không ghi được kill-switch sau khi verify | **Xem mục "Được giao book lệch"** |

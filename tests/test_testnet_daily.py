@@ -150,3 +150,16 @@ def test_executor_refuses_client_pointed_at_production_url():
     with pytest.raises(ValueError, match="not a testnet host"):
         TestnetExecutor(LabelledTestnetButPointedAtProd(), ExecutionPolicy(expected_config_sha256="a" * 64),
                         KillSwitch(tmp / "k.json"), ExecutionAudit(tmp / "a.sqlite3"))
+
+
+def test_stale_target_is_a_missed_window_not_an_incident(monkeypatch, tmp_path):
+    """A late run (machine woke after the 6h freshness window) must log MISSED_WINDOW and
+    leave NO marker, so the next scheduled run is not blocked for a non-event."""
+    from test_execution import TrackingClient
+    _wire(monkeypatch, tmp_path, TrackingClient)
+    from execution.engine import TestnetExecutor
+    monkeypatch.setattr(TestnetExecutor, "assert_target_fresh",
+                        lambda self, book: (_ for _ in ()).throw(RuntimeError("stale target: intended execution is 9.50h old (limit 6.00h)")))
+    assert daily.main() == 5
+    assert not daily.ATTENTION.exists()
+    assert "MISSED_WINDOW" in daily.LOG.read_text(encoding="utf-8")
