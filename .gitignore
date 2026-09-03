@@ -44,3 +44,7 @@ Thumbs.db
 archive/legacy_15m/.exit_ab_kline_cache/
 archive/collector/market_data/
 archive/legacy_15m/*.ipynb
+
+# accrued positioning snapshots (regenerable only for the last 30 days - back it up, do not commit)
+data_snapshots/
+_workflow_buildout.js

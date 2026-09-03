@@ -18,7 +18,22 @@ Nguyên tắc duy nhất cần nhớ: engine chỉ tự thanh lý (flatten) khi 
 
 Nó **tự tắt** ngày `execution_ceilings` khai live > 0 — không cần nhớ tắt khi lên live.
 
-**Máy phải thức lúc 07:20.** Testnet cố ý KHÔNG bù ngày thiếu (fill phải gần 00:20 UTC). Máy tắt/ngủ = ngày đó không có run, không có lỗi, không có marker — chỉ `python status.py` mới cho thấy "missed". Cần ≥20 COMPLETE trước ngày 60, nên uptime sáng ~70% là bắt buộc. Trong Task Scheduler (taskschd.msc) → task CarryTestnetDaily → Properties → Conditions: tích **"Wake the computer to run this task"**; Settings: tích **"Run task as soon as possible after a scheduled start is missed"**. Run muộn quá 6h sẽ tự ghi `MISSED_WINDOW` (không marker, không chặn ngày sau). Laptop gập nắp/hibernate thì wake không tác dụng — cắm điện, để mở.
+**Máy phải thức lúc 07:20.** Testnet cố ý KHÔNG bù ngày thiếu (fill phải gần 00:20 UTC). Máy tắt/ngủ = ngày đó không có run, không có lỗi, không có marker — chỉ `python status.py` mới cho thấy "missed". Cần ≥20 COMPLETE trước ngày 60, nên uptime sáng ~70% là bắt buộc. Run muộn quá 6h sẽ tự ghi `MISSED_WINDOW` (không marker, không chặn ngày sau).
+
+Ba tầng để máy tự dậy và task không bị giết (bài học 31/08–03/09, xem `carry_paper_incidents.md`):
+
+1. **Task:** `INSTALL_TASKS.bat` tự bật *Wake the computer* + *Run as soon as possible after a missed start* cho cả ba task, và chạy chúng **ẩn** qua `run_hidden.vbs`. Trước đây mỗi run bật một cửa sổ console; đóng cửa sổ đó = CTRL_CLOSE → Python bị kill giữa chừng (mã 0xC000013A), để lại lock + marker rỗng. Không còn cửa sổ thì không còn gì để đóng.
+2. **Power plan (laptop Modern Standby mặc định TẮT wake timer, nên cờ ở tầng 1 vô dụng nếu thiếu tầng này):**
+   ```
+   powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1
+   powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1
+   powercfg /change standby-timeout-ac 0
+   powercfg /S SCHEME_CURRENT
+   ```
+   Dòng 3 = cắm điện thì không bao giờ tự ngủ (màn hình vẫn tắt). Đã áp dụng trên máy này 31/08.
+3. **Vật lý:** cắm sạc, để nắp mở. Gập nắp/hibernate/shutdown thì không tầng nào cứu được.
+
+Kiểm tra nhanh: `Get-ScheduledTask Carry* | % { $_.TaskName + ' ' + $_.Settings.WakeToRun }` trong PowerShell phải ra `True` cả ba.
 
 **Một lệnh xem toàn cảnh:** `python status.py` — paper/testnet/markers/canary/fills trong 6 dòng.
 
