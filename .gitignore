@@ -47,7 +47,10 @@ archive/legacy_15m/*.ipynb
 
 # accrued positioning snapshots (regenerable only for the last 30 days - back it up, do not commit)
 data_snapshots/
-_workflow_buildout.js
+
+# one-off maintenance scripts, xoa sau khi dung
+clean_history.sh
+CLEAN_HISTORY.bat
 
 # research kline/funding cache - regenerable, never commit
 .honest_cache/

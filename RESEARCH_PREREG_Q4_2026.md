@@ -1,6 +1,6 @@
 # Đăng ký trước nghiên cứu Q4/2026 (khóa ngày 04/09/2026)
 
-Ngân sách quý: **≤3 hướng**, đúng như kỷ luật đã ghi trong `HONEST_FINDINGS.md`. Ba cell dưới đây được chọn từ 6 đề xuất qua hai hội đồng chấm độc lập (một "skeptical quant" săn leakage, một "practical operator" hỏi cái gì đổi được P&L trong một quý). File này viết **trước khi nhìn bất kỳ kết quả nào** và không được sửa sau khi bắt đầu chạy — sửa grid, đổi ngưỡng, thêm biến thể sau khi thấy số là chính xác cái đã làm hỏng bot 15m cũ (PF 2.69 giả).
+Ngân sách quý: **≤3 hướng**, đúng như kỷ luật đã ghi trong `HONEST_FINDINGS.md`. Ba cell dưới đây chọn ra từ 6 ý tưởng, chấm hai lượt cách nhau vài ngày: lượt đầu chỉ đi tìm chỗ có thể rò rỉ hoặc trùng với cái đã đóng, lượt sau chỉ hỏi một câu — cái nào thực sự đổi được P&L trong một quý. File này viết **trước khi nhìn bất kỳ kết quả nào** và không được sửa sau khi bắt đầu chạy — sửa grid, đổi ngưỡng, thêm biến thể sau khi thấy số là chính xác cái đã làm hỏng bot 15m cũ (PF 2.69 giả).
 
 **Không cell nào được chạy trước 01/10/2026.** Tháng 9 dành cho vận hành: đủ 20 lần testnet COMPLETE và cổng ngày 60.
 

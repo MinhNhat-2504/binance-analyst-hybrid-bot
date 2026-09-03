@@ -1,6 +1,6 @@
 # CARRY-7d go-live gate report
 
-Evaluated as of **2026-09-03** (generated 2026-09-03 20:25 UTC by gate_report.py).
+Evaluated as of **2026-09-03** (generated 2026-09-03 20:55 UTC by gate_report.py).
 
 ## VERDICT: NOT-YET
 

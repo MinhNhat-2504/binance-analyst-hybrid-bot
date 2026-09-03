@@ -1,13 +1,16 @@
+# Chien luoc dang chay (CARRY-7d: paper + testnet + cac lenh bao cao) chi can 4 goi dau.
 numpy>=1.24.0
 pandas>=2.0.0
+pyarrow>=12.0.0          # cache klines/funding duoi dang parquet trong .honest_cache/
+requests>=2.31.0         # goi REST cua Binance, khong dung SDK
+
+# Chi can khi chay lai cac lab cu trong honest/ va clean_research/
 scikit-learn>=1.3.0
 xgboost>=2.0.0
-tensorflow>=2.13.0
-keras>=2.13.0
 joblib>=1.3.0
-python-binance>=1.0.17
-python-dotenv>=1.0.0
-feedparser>=6.0.10
-schedule>=1.2.0
-requests>=2.31.0
-websocket-client>=1.8.0
+
+# Chay test
+pytest>=7.4.0
+
+# Bot 15m cu (tensorflow, keras, python-binance, feedparser, schedule,
+# websocket-client) da chuyen vao archive/legacy_15m/ va khong con can nua.

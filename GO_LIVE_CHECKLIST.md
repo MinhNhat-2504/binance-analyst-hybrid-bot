@@ -84,7 +84,7 @@ Tháng 1 live: vốn khởi điểm. Mỗi tháng sạch (tracking ≤1%/tháng,
 | ~20/09 | mở tài khoản (hoặc sub-account) Binance **riêng cho bot**, bật futures, tạo key **read-only** trước, chưa nạp tiền | bạn |
 | T7 26/09 | **diễn tập kill-switch giữa chừng** trên testnet: chạy tay, bật kill-switch lúc đang đặt lệnh, xử lý `HALTED_*` theo runbook, ghi rồi đóng incident | bạn + runbook |
 | 02/10 sáng | `python gate_report.py` → đọc verdict. Nếu GO: sang Phần 4 và **ngủ một đêm** trước khi sửa ceilings | bạn |
-| tháng 10 | thiết kế **live runner không người trực** (cùng cấu trúc self-release như testnet, DD guard chuyển vào engine, cờ `unattended_live` riêng). Chỉ build sau ≥10 ngày live chạy tay sạch — **tháng 10 là tháng chạy tay**, nói trước để không ảo tưởng "bật là xong" | Claude + bạn |
-| tháng 10 | nghiên cứu Q4 theo `RESEARCH_PREREG_Q4_2026.md` (đã đăng ký trước, không thêm cell giữa chừng) | Claude |
+| tháng 10 | thiết kế **live runner không người trực** (cùng cấu trúc self-release như testnet, DD guard chuyển vào engine, cờ `unattended_live` riêng). Chỉ build sau ≥10 ngày live chạy tay sạch — **tháng 10 là tháng chạy tay**, nói trước để không ảo tưởng "bật là xong" | bạn |
+| tháng 10 | nghiên cứu Q4 theo `RESEARCH_PREREG_Q4_2026.md` (đã đăng ký trước, không thêm cell giữa chừng) | bạn |
 
 Ghi trước một nguồn lệch paper-vs-live đã biết, để sau này không đổ lỗi sai: 6 đồng trong universe trả funding **mỗi 4 giờ** (TIA, ENA, JTO, PYTH, TAO, ORDI) trong khi paper giả định 3 kỳ/ngày, và PYTH/TAO/ORDI hay nằm bên short. Không phải lỗi, không tune — nó là một cell robustness trong pre-reg Q4.

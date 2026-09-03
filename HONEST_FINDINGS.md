@@ -38,12 +38,12 @@ Bất đẳng thức `4.9 < 12` là toàn bộ vấn đề. Mọi thứ khác (s
 
 → Sinh ra PF 2.25–2.69 giả trong `model_calibrations.json`. PF thực đo trên 4110 lệnh shadow: **0.999**.
 
-**Tầng 2 — chính harness v1 cũng dính (bị bắt bởi kiểm toán đối nghịch 21 agent):**
+**Tầng 2 — chính harness v1 cũng dính (soi lại lần hai, lần này đi tìm lỗi chứ không đi xác nhận):**
 1. `Taker Buy Base` (volume thô) + ~20 cột level không dừng (EMA, BB, MACD...) lọt qua bộ lọc feature → model **nhớ mặt symbol** thay vì học tín hiệu. Bỏ rò rỉ: excess SHORT +9.67 → +4.94bps. *Một nửa "kỹ năng" là memorization.*
 2. Công thức effective-n sai (Kish thay vì Σw) → CI hẹp 2.5× so với sự thật
 3. Purge giả định lưới nến không gap; maker sim bỏ sót stop cùng nến
 
-Bài học vận hành: **rò rỉ không phải lỗi một lần — nó là áp lực thường trực.** Đến cả công cụ xây riêng để chống rò rỉ cũng rò. Chỉ có kiểm toán đối nghịch + permutation null mới giữ được sự trung thực.
+Bài học vận hành: **rò rỉ không phải lỗi một lần — nó là áp lực thường trực.** Đến cả công cụ xây riêng để chống rò rỉ cũng rò. Cách duy nhất giữ được trung thực là mỗi lần đo lại phải cố tình đi tìm chỗ sai, và luôn có permutation null đứng cạnh để đối chiếu.
 
 ## Khuyến nghị
 
@@ -68,14 +68,11 @@ Chuẩn nghiệm thu cho mọi ý tưởng mới: `python run_honest_harness.py`
 2. **Nguồn thông tin khác hẳn**: on-chain, event-driven, order-book microstructure (cần hạ tầng khác)
 3. **Chấp nhận kết luận thị trường**: TA 15m trên các đồng major đã được price-in hiệu quả — kết quả âm này *nhất quán* với giả thuyết thị trường hiệu quả ở khung đó
 
-## Điều project này đã làm được
+## Còn lại gì sau tất cả
 
-Câu hỏi "chiến lược này có edge không?" đã được trả lời **đúng phương pháp và dứt điểm** — điều mà đa số bot retail không bao giờ đạt tới, vì backtest của họ nói dối và họ không có công cụ để biết. Bạn giờ có:
-- Một rig đo lường mà backtest không lừa được
-- Danh mục failure mode đã trải nghiệm thực tế (leakage, overfit gate, adverse selection, multiple testing)
-- Một tiêu chuẩn nghiệm thu rõ ràng cho mọi ý tưởng tương lai
+Tín hiệu 15m thì không có. Nhưng câu hỏi "cái này có edge không" giờ trả lời được dứt điểm, trong khi hồi còn tin vào PF 2.69 thì không có cách nào biết.
 
-Đó là nền tảng thật. Tín hiệu thì chưa có — nhưng giờ bạn sẽ *biết ngay* khi nào nó có.
+Cụ thể là một bộ đo mà backtest không lừa được, một danh sách failure mode tự tay dẫm phải (leakage, overfit cổng, adverse selection, multiple testing), và một chuẩn nghiệm thu áp cho mọi ý tưởng sau này. Đúng cái chuẩn đó về sau loại basis carry, vol-target và cross-exchange chỉ trong ba ngày.
 
 ---
 
@@ -122,7 +119,7 @@ Scale gross = target_vol / vol thực 20 ngày (lag 1), floor 0.25, cap 2.0; tar
 
 Không nhất quán giữa universe, và **ngày tệ nhất luôn tệ hơn** ở cả 4 cell: vol-target nâng scale trong lúc yên rồi bị squeeze đập đúng lúc đang ở gross cao — failure mode kinh điển của vol-targeting cho chiến lược kiểu short-vol. Nếu muốn vol thấp hơn, đòn bẩy cố định 0.65× cho cùng Sharpe, đơn giản hơn, rẻ hơn. Không đưa vào paper-v2.
 
-**Điểm chung của hai kết quả:** harness `honest/` giờ trả lời một ý tưởng mới trong ~1 ngày với cùng chuẩn (null + hold-out + halves + cost stress). Đó là lý do kết quả âm cũng có giá trị — chúng rẻ và dứt điểm.
+Cả hai cell đều mất đúng một ngày, vì `honest/` đã có sẵn null, hold-out, halves và cost stress. Kết quả âm rẻ như vậy thì mới đáng làm.
 
 ### Cross-exchange (Binance vs Bybit, 577 ngày chung; OKX chỉ có ~90 ngày funding public nên bỏ) — 16/08/2026
 
@@ -143,4 +140,16 @@ Funding hai sàn tương quan 0.93, chọn trùng ~57% tên, nhưng chỉ **xế
 1. *Tốt:* chiến lược không phụ thuộc sàn thực thi — weight Binance áp lên giá Bybit vẫn giữ ~90% Sharpe. Giá không phải artifact; có thể chạy trên Bybit nếu cần (phí/thanh khoản khác).
 2. *Điểm yếu có tên:* edge sống nhờ **chất lượng thông tin trong funding Binance** (sàn có OI alt lớn nhất → funding phản ánh crowding thật), không phải "funding nói chung". Nếu Binance đổi cơ chế funding (cap, chu kỳ 4h…) hoặc dòng tiền dịch sàn, tín hiệu có thể phai. Không phải refutation; là rủi ro cấu trúc cần theo dõi. Canary đề xuất: theo dõi định kỳ hiệu năng "Bybit-funding weights" — nếu nó bắt đầu ngang Binance, tín hiệu đang lan rộng (tốt); nếu Binance tụt về mức Bybit, tín hiệu đang phai.
 
-**Tổng kết ngày 16/08:** 3 họ ý tưởng đo trong một ngày (basis carry, vol-target, cross-exchange), cả 3 đóng như chiến lược mới; nhưng cross-exchange cho CARRY-7d một bài kiểm tra độc lập đạt (thực thi được trên sàn khác) và một điểm yếu được gọi tên. Hạn mức ≤3 họ/quý đã dùng hết — **không mở cell mới cho tới tháng 10.**
+Ba họ ý tưởng trong một ngày, cả ba đóng như chiến lược mới. Đổi lại, cross-exchange trả cho CARRY-7d một bài kiểm tra độc lập đã đạt và một điểm yếu có tên. Hạn mức ≤3 họ/quý hết sạch từ đó, **không mở cell mới cho tới tháng 10.**
+
+---
+
+## Sổ finding (mã FA-*/R6 được trích trong code và config)
+
+Mấy chỗ trong `honest/daily.py`, `run_carry_paper.py` và `carry_paper_config_v1.json` có trích mã finding. Ghi lại ở đây để đọc code không phải đoán:
+
+- **FA-1 — nến ma của coin đã delist.** Binance vẫn trả kline cho symbol đã ngừng giao dịch: giá đứng im, volume 0. Không lọc thì backtest tự sinh lãi từ những ngày không thể khớp lệnh. Chặn bằng zombie guard trong `build_panel`: symbol-ngày chỉ hợp lệ khi volume > 0 **và** nằm trong khoảng có funding.
+- **FA-2 / R6 — funding của lần settle 00:00 UTC thuộc về rổ nào.** Ngày t settle lúc 00:00, rebalance cũng ở 00:00. Ghi funding đó cho rổ *mới* thì luôn có lợi cho backtest một cách hệ thống, vì rổ mới được chọn dựa trên chính chuỗi funding vừa cộng. Quy tắc: settlement 00:00 thuộc về rổ giữ **trước** khi rebalance.
+- **FA-3 — reindex không được forward-fill.** `fill_method=None` khi reindex panel. Mặc định pad sẽ kéo giá của ngày sống sang ngày chết, làm biến mất đúng cái mà FA-1 vừa chặn.
+
+`carry_paper_config_v1.json` bị khóa bằng hash nên không sửa được nữa (đúng như thiết kế) — mã trích trong đó giờ tra ở mục này.
