@@ -21,14 +21,34 @@ Why this is allowed to self-release the kill switch, and why only here:
        day execution_ceilings_v2.json authorises live capital, this script stops working
        by itself; nobody has to remember to turn it off.
 
+Equity drawdown guard (the automatic form of the GO_LIVE_CHECKLIST.md stop rule):
+
+  Before anything can be placed, the loop reads account equity the same way the engine
+  does (totalMarginBalance), ratchets a per-environment high-water mark stored in
+  .execution/equity_hwm_<environment>.json, and halts the day - kill switch engaged,
+  ATTENTION marker, DD_GUARD_HALT log row, exit 8, zero orders - once equity sits
+  MAX_LOSS_FRACTION_OF_BUDGET of the frozen budget below that mark. The loss is measured
+  in DOLLARS against the budget, not as a percent of equity: the demo account carries a
+  large fake balance that would hide a 20% loss on a $2000 book. On live the account is
+  the book, so the two definitions coincide and a live loop inheriting this file is safe
+  when nobody is watching. After review (e.g. a demo balance reset) the operator re-bases
+  the mark with:
+
+      python run_carry_testnet_daily.py --reset-equity-hwm
+
+  which reads equity, sets hwm = equity, and exits without placing anything.
+
 Outcomes:
   * COMPLETE and reconcile exit 0  -> silent. One line appended to carry_testnet_log.csv.
   * Anything else                  -> writes .execution/ATTENTION (a file whose mere presence
                                       says "read the runbook"), appends to
                                       carry_paper_incidents.md, exits non-zero.
+    Exit codes: 4 export failed, 5 plan refused / missed window, 6 run needs review,
+    7 lock held, 8 drawdown guard halt.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import os
@@ -36,16 +56,18 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Sequence
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from execution.binance_futures import FuturesREST  # noqa: E402
-from execution.contracts import FROZEN_TESTNET_GROSS_CEILING_USD, load_ceilings  # noqa: E402
+from execution.contracts import FROZEN_TESTNET_GROSS_CEILING_USD, frozen_ceiling, load_ceilings  # noqa: E402
 from execution.engine import ExecutionAudit, ExecutionPolicy, KillSwitch, TestnetExecutor  # noqa: E402
 from execution.targets import load_target_book, sha256_file  # noqa: E402
 
 PYTHON = sys.executable
+ENVIRONMENT = "testnet"
 TARGETS = ROOT / "execution" / "carry_targets_latest.json"
 PAPER_CONFIG = ROOT / "carry_paper_config_v1.json"
 KILL = ROOT / ".execution" / "kill_switch.json"
@@ -54,9 +76,84 @@ ATTENTION = ROOT / ".execution" / "ATTENTION"
 LOG = ROOT / "carry_testnet_log.csv"
 INCIDENTS = ROOT / "carry_paper_incidents.md"
 
+# GO_LIVE_CHECKLIST.md stop rule: "DD -20% -> stop". Applied as dollars lost from the
+# equity high-water mark versus the frozen budget for the environment (see module
+# docstring for why not percent-of-equity). Defined once; nothing else may restate it.
+MAX_LOSS_FRACTION_OF_BUDGET = 0.20
+HWM_HISTORY_ROWS = 120
+EXIT_DD_GUARD_HALT = 8
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# ---------------------------------------------------------------------------
+# Equity drawdown guard
+# ---------------------------------------------------------------------------
+def _hwm_path(environment: str) -> Path:
+    """The mark lives beside the kill switch it pulls, so the two always travel together."""
+    return KILL.parent / f"equity_hwm_{environment}.json"
+
+
+def _equity(client: Any) -> float:
+    """Same field and same refusal as the engine (PortfolioExecutor._equity)."""
+    equity = float(client.account().get("totalMarginBalance", 0) or 0)
+    if equity <= 0:
+        raise RuntimeError("insufficient totalMarginBalance for equity drawdown guard")
+    return equity
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    """Temp + rename: a crash mid-write can never leave a half file where the mark was."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _update_hwm(client: Any, environment: str, *, reset: bool = False) -> dict[str, Any]:
+    """Read equity, ratchet the high-water mark, persist, then judge.
+
+    Persisting happens before the budget lookup and before any verdict, so the history
+    accrues on every run that got as far as an account read - refusals included. A
+    malformed mark file raises (-> PLAN_REFUSED) rather than silently starting over,
+    because a silently reset mark would hide exactly the loss this guard exists to catch.
+    """
+    path = _hwm_path(environment)
+    equity = _equity(client)
+    now = _now()
+    prior: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if reset or "hwm" not in prior or equity > float(prior["hwm"]):
+        hwm, hwm_utc = equity, now
+    else:
+        hwm, hwm_utc = float(prior["hwm"]), str(prior.get("hwm_utc") or now)
+    history = list(prior.get("history") or [])
+    history.append({"utc": now, "equity": equity})
+    state = {"hwm": hwm, "hwm_utc": hwm_utc, "last_equity": equity, "last_utc": now,
+             "history": history[-HWM_HISTORY_ROWS:]}
+    _write_json_atomic(path, state)
+
+    budget_usd = float(frozen_ceiling(environment))
+    loss_usd = hwm - equity
+    max_loss_usd = MAX_LOSS_FRACTION_OF_BUDGET * budget_usd
+    return {**state, "budget_usd": budget_usd, "loss_usd": loss_usd, "max_loss_usd": max_loss_usd,
+            "halt": loss_usd >= max_loss_usd}
+
+
+def _dd_guard_reason(guard: dict[str, Any], environment: str) -> str:
+    return (f"dd_guard: equity {guard['last_equity']:.2f} USD is {guard['loss_usd']:.2f} USD below "
+            f"high-water mark {guard['hwm']:.2f} USD ({guard['hwm_utc']}); limit {guard['max_loss_usd']:.2f} USD "
+            f"= {MAX_LOSS_FRACTION_OF_BUDGET:.0%} of {environment} budget {guard['budget_usd']:.2f} USD")
+
+
+def _reset_equity_hwm() -> int:
+    """Operator re-base after review (demo balance reset, deliberate re-start). No orders."""
+    client = FuturesREST.from_env(ENVIRONMENT, required=True)
+    state = _update_hwm(client, ENVIRONMENT, reset=True)
+    print(f"equity high-water mark for {ENVIRONMENT} reset to {state['hwm']:.2f} USD at {state['hwm_utc']} "
+          f"-> {_hwm_path(ENVIRONMENT)} (no orders placed)")
+    return 0
 
 
 LOG_COLUMNS = ("utc", "target_id", "status", "reconcile_exit", "plan_legs", "plan_skips", "detail")
@@ -116,8 +213,21 @@ def _acquire_lock():
     return LOCK
 
 
-def main() -> int:
+def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Unattended daily testnet rehearsal for CARRY-7d.")
+    parser.add_argument("--reset-equity-hwm", action="store_true",
+                        help="after operator review: set the equity high-water mark to current equity "
+                             "and exit without running the day (no orders).")
+    return parser.parse_args(list(argv))
+
+
+def main(argv: Sequence[str] = ()) -> int:
+    """No-arg call is the scheduled path. argv is explicit so the scheduled task, tests and
+    the operator's --reset-equity-hwm all go through the same crash guard."""
+    args = _parse_args(argv)
     try:
+        if args.reset_equity_hwm:
+            return _reset_equity_hwm()
         return _main()
     except SystemExit:
         raise
@@ -149,6 +259,13 @@ def _main() -> int:
             pass
 
 
+def _plan_refused(started: str, book: Any, exc: BaseException) -> int:
+    """Any refusal before the kill switch is released: nothing placed, marker + log row."""
+    _attention("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"})
+    _log({"utc": started, "target_id": book.target_id, "status": "PLAN_REFUSED", "detail": str(exc)[:200]})
+    return 5
+
+
 def _run() -> int:
     started = _now()
 
@@ -159,7 +276,7 @@ def _run() -> int:
         return 4
     book = load_target_book(TARGETS)
 
-    client = FuturesREST.from_env("testnet", required=True)   # refuses anything but testnet creds
+    client = FuturesREST.from_env(ENVIRONMENT, required=True)   # refuses anything but testnet creds
     policy = ExecutionPolicy(
         max_gross_notional_usd=FROZEN_TESTNET_GROSS_CEILING_USD,
         expected_config_sha256=sha256_file(PAPER_CONFIG),
@@ -168,7 +285,29 @@ def _run() -> int:
     audit = ExecutionAudit(AUDIT)
     executor = TestnetExecutor(client, policy, kill, audit)   # refuses non-testnet client/policy
 
-    # 2. Plan first. Any refusal here is free (nothing placed) and worth seeing on its own.
+    # 2. Equity drawdown guard - the checklist stop rule, enforced before anything can be
+    #    placed. The mark file is persisted whether or not it halts. An account read that
+    #    fails is a pre-plan refusal like any other (marker + PLAN_REFUSED row, exit 5).
+    try:
+        guard = _update_hwm(client, ENVIRONMENT)
+    except Exception as exc:
+        return _plan_refused(started, book, exc)
+    if guard["halt"]:
+        reason = _dd_guard_reason(guard, ENVIRONMENT)
+        kill.engage(reason)
+        _attention("dd_guard", {
+            "target_id": book.target_id, "environment": ENVIRONMENT, "message": reason,
+            "equity_usd": guard["last_equity"], "hwm_usd": guard["hwm"], "hwm_utc": guard["hwm_utc"],
+            "loss_usd": guard["loss_usd"], "max_loss_usd": guard["max_loss_usd"], "budget_usd": guard["budget_usd"],
+            "hwm_file": str(_hwm_path(ENVIRONMENT)),
+            "note": "no orders were placed. Review per EXECUTION_RUNBOOK.md; after a deliberate "
+                    "re-start run --reset-equity-hwm, then delete the ATTENTION marker.",
+        })
+        _log({"utc": started, "target_id": book.target_id, "status": "DD_GUARD_HALT", "detail": reason[:200]})
+        print(f"DD_GUARD_HALT (no orders, kill switch engaged): {reason}")
+        return EXIT_DD_GUARD_HALT
+
+    # 3. Plan first. Any refusal here is free (nothing placed) and worth seeing on its own.
     try:
         executor.assert_target_fresh(book)
         executor.assert_target_identity(book)
@@ -181,11 +320,9 @@ def _run() -> int:
             _log({"utc": started, "target_id": book.target_id, "status": "MISSED_WINDOW", "detail": str(exc)[:200]})
             print(f"missed window (no orders, no marker): {exc}")
             return 5
-        _attention("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"})
-        _log({"utc": started, "target_id": book.target_id, "status": "PLAN_REFUSED", "detail": str(exc)[:200]})
-        return 5
+        return _plan_refused(started, book, exc)
 
-    # 3. Release for exactly this target and budget, execute, and re-engage no matter what.
+    # 4. Release for exactly this target and budget, execute, and re-engage no matter what.
     status, detail = "UNKNOWN", ""
     kill.release(f"unattended testnet rehearsal {started}", target_id=book.target_id,
                  authorized_budget_usd=FROZEN_TESTNET_GROSS_CEILING_USD)
@@ -205,7 +342,7 @@ def _run() -> int:
         except Exception as exc:   # engine's own _safe_engage already tried; this is belt-and-braces
             _attention("kill_switch_reengage_failed", {"error": str(exc), "status": status})
 
-    # 4. Reconcile. Exit 0 = matches contract; 2 = mismatch; 3 = hand-off state exists.
+    # 5. Reconcile. Exit 0 = matches contract; 2 = mismatch; 3 = hand-off state exists.
     rec = subprocess.run([PYTHON, "-B", str(ROOT / "reconcile_paper_vs_testnet.py"),
                           "--targets", str(TARGETS), "--audit", str(AUDIT)],
                          capture_output=True, text=True, cwd=ROOT, timeout=300)
@@ -223,4 +360,4 @@ def _run() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

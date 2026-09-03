@@ -35,7 +35,7 @@ Ba tầng để máy tự dậy và task không bị giết (bài học 31/08–
 
 Kiểm tra nhanh: `Get-ScheduledTask Carry* | % { $_.TaskName + ' ' + $_.Settings.WakeToRun }` trong PowerShell phải ra `True` cả ba.
 
-**Một lệnh xem toàn cảnh:** `python status.py` — paper/testnet/markers/canary/fills trong 6 dòng.
+**Một lệnh xem toàn cảnh:** `python status.py` — paper/testnet/markers/canary/fills trong 6 dòng. Các lệnh chỉ-đọc khác: `python gate_report.py` (phán quyết gate ngày 60, ghi `reports/GATE_REPORT.md`), `python check_live_filters.py` (sàn thật nhận rổ này ở vốn tối thiểu bao nhiêu — không cần key), `python track_paper_vs_testnet.py` (tracking error), `python analyze_execution_quality.py` (chất lượng fill). `collect_daily_snapshots.py` chạy tự động sau paper mỗi sáng, gom dữ liệu vị thế (OI, long/short ratio, taker flow, basis) vào `data_snapshots/` cho nghiên cứu Q4 — Binance chỉ giữ 30 ngày nên **thư mục đó là tài sản, nên backup**.
 
 ## Chu trình một ngày bình thường (chạy tay, nếu muốn)
 
@@ -59,6 +59,7 @@ Kill-switch tự **bật lại** sau mỗi run thành công. Release hết hạn
 | `DRY_RUN` | không đổi | `--plan` | Không có gì |
 | `FAILED` | **tùy** — xem `orders_started` trong audit/sidecar | Hoặc abort ở giai đoạn plan (drift, thiếu reference, target cũ, budget không khớp, hedge mode) → không có gì trên sàn; **hoặc** lỗi sau khi có lệnh mà engine đã flatten thành công → sàn flat nhưng bạn đã trả phí một vòng | Đọc message. Nếu có snapshot `emergency_flatten_verified` → đã thanh lý, điều tra nguyên nhân trước khi chạy lại. Nếu không → chỉ là abort plan, sửa rồi chạy lại |
 | `MISSED_WINDOW` (log tự động) | không đổi | Run muộn >6h sau close (máy ngủ, wake trễ, chạy tay buổi chiều). Không marker, không chặn ngày sau | Không làm gì; đảm bảo máy thức 07:20 |
+| `DD_GUARD_HALT` (chỉ ở log tự động) | không đổi (0 lệnh) | Equity (`totalMarginBalance`) tụt ≥20% **ngân sách đóng băng** so với đỉnh (testnet: $2000 → ngưỡng $400). Đây là bản tự động của quy tắc "DD −20%" trong GO_LIVE_CHECKLIST. Kill-switch đã bật, có ATTENTION, exit 8 | Xem mục "Sau `DD_GUARD_HALT`" |
 | `PLAN_REFUSED` (chỉ ở log tự động) | không đổi | Bước plan từ chối trước khi mở khóa — thường gặp nhất là **target quá 6h** (chạy tay lúc chiều/tối, hoặc máy tắt qua giờ 07:20). Không có gì trên sàn | Nếu do chạy tay: bỏ qua, sáng mai task tự chạy đúng giờ. Nếu task tự động vẫn báo: kiểm `export_carry_targets.py` có ra ngày signal hôm qua không |
 | `RUNNING` (không đổi sau nhiều phút) | **không rõ** | Process chết giữa chừng (mất điện, taskkill). Reconciler coi đây là exposure | Vào sàn xem thật; xử lý như `HALTED_MID_BOOK` |
 | **`HALTED_MID_BOOK`** | **một phần book, lệch** | Đang đặt lệnh thì: kill-switch hết hạn / bị bật tay, market data mất trước POST, lệnh chờ lạ xuất hiện, slippage vượt ngưỡng, hoặc không ghi được kill-switch sau khi verify | **Xem mục "Được giao book lệch"** |
@@ -86,6 +87,12 @@ Bạn đang cầm một danh mục market-neutral **chưa hoàn thành** — có
    - **Không được**: để nguyên và "xem sao". Book lệch = đang beta thị trường, không phải chiến lược.
 4. **Ghi lại** vào `carry_paper_incidents.md` (tạo nếu chưa có): ngày, status, nguyên nhân, quyết định. 60 ngày paper cần record này để biết executor có đáng tin không.
 
+## Sau `DD_GUARD_HALT`
+
+Guard đo **đô-la so với đỉnh**, không phải phần trăm tài khoản — vì tài khoản demo có số dư giả lớn hơn rổ, đo theo % sẽ không bao giờ kêu. Ba khả năng: (a) rổ lỗ thật → đây đúng là tiêu chí dừng, xem lại toàn bộ trước khi làm gì; (b) Binance nạp/reset số dư demo làm đỉnh nhảy lên rồi tụt về → không phải lỗ; (c) sự cố dữ liệu. Với (b) và (c): ghi vào `carry_paper_incidents.md`, xóa ATTENTION, rồi chạy `python run_carry_testnet_daily.py --reset-equity-hwm` (đặt lại đỉnh = equity hiện tại, không chạy ngày, không đặt lệnh). Sáng hôm sau task tự chạy lại. Lịch sử equity 120 dòng gần nhất nằm trong `.execution/equity_hwm_testnet.json`.
+
+Mã exit của vòng lặp tự động: 4 export thất bại · 5 plan bị từ chối hoặc lỡ cửa sổ · 6 lỗi sau khi đã có lệnh (đọc audit) · 7 lock kẹt · **8 DD guard**.
+
 ## Những thứ engine cố tình KHÔNG làm
 
 - Không tự chạy lại sau halt. Mọi lần chạy đều cần release mới.
@@ -98,4 +105,5 @@ Không phải checklist code. Checklist **record**:
 - ≥60 ngày paper qua gate trong `carry_paper_config_v1.json`.
 - ≥20 lần testnet `COMPLETE` + reconcile exit 0, gồm ít nhất một ngày có flip, một ngày có orphan close, và **một lần bạn cố tình bật kill-switch giữa chừng** rồi xử lý theo mục trên mà không hoảng.
 - File `carry_paper_incidents.md` có nội dung và mọi incident đều đóng.
+- `python gate_report.py` in **GO** (exit 0). Nó tự đọc mọi dòng trên từ file, trừ hai bằng chứng cần người: ngày flip và lần diễn tập kill-switch.
 - `execution_ceilings_v2.json` với số live **có review**, không phải copy số testnet.

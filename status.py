@@ -42,7 +42,7 @@ def _paper():
     lag = (date.today() - date.fromisoformat(last)).days
     return (f"  paper   day {n}/{gate['min_paper_days']} (target {gate['recommended_paper_days']})  "
             f"equity {eq:.4f} ({(eq - 1) * 100:+.2f}%)  sharpe {sh:+.2f}  maxDD {dd * 100:.1f}%  "
-            f"last booked {last} ({lag}d ago{' - OK, needs next open' if lag <= 2 else ' - CHECK paper task'})")
+            f"last booked {last} ({lag}d ago{' - OK, needs next open' if lag <= 3 else ' - CHECK paper task'})")
 
 
 def _testnet():

@@ -182,6 +182,8 @@ class FuturesREST:
         return self.signed("POST", "/fapi/v1/marginType", {"symbol": symbol.upper(), "marginType": margin_type})
 
     def order(self, **params: Any) -> dict[str, Any]:
+        """POST /fapi/v1/order. A post-only order is type="LIMIT", timeInForce="GTX",
+        price=<touch>: the exchange rejects it (-5022) or expires it instead of taking."""
         return self.signed("POST", "/fapi/v1/order", params)
 
     def get_order(self, symbol: str, order_id: int) -> dict[str, Any]:

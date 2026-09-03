@@ -37,6 +37,14 @@ python run_carry_paper.py
 python run_carry_paper.py --status   # xem đang ở ngày bao nhiêu, lãi lỗ ra sao
 ```
 
+Vận hành hằng ngày thì không phải gõ gì — ba task Windows do `INSTALL_TASKS.bat` cài chạy paper lúc 07:05, diễn tập testnet 07:20, canary Chủ nhật. Khi muốn biết tình hình:
+
+```bash
+python status.py              # toàn cảnh trong 6 dòng
+python gate_report.py         # ngày 60: GO / NO-GO / NOT-YET, từng điều kiện kèm số đo
+python check_live_filters.py  # sàn thật nhận rổ này ở vốn tối thiểu bao nhiêu (không cần key)
+```
+
 ## Cấu trúc
 
 - `honest/` — bộ đo lường: fetch data có cache, feature sạch (chặn cột không dừng), triple-barrier label tính đủ phí, purged walk-forward, permutation null, mô phỏng khớp lệnh maker/taker, và lab chiến lược khung ngày. Đây là phần đáng giá nhất của repo; muốn thử ý tưởng gì thì bắt nó chạy qua đây trước khi tin.
@@ -45,7 +53,9 @@ python run_carry_paper.py --status   # xem đang ở ngày bao nhiêu, lãi lỗ
 - `run_clean_oos.py` — pipeline OOS độc lập (một nhánh kiểm tra song song, kết luận tương tự).
 - `archive/legacy_15m/` — toàn bộ bot 15m cũ (notebook, model, config, script chẩn đoán). Giữ để tham khảo, **đừng tin số trong đó** — xem HONEST_FINDINGS.md. `archive/collector/` — bộ ghi order-book, đóng vì ISP chặn futures WebSocket.
 - `reports/` — JSON kết quả của mọi lab đã chạy (bằng chứng cho HONEST_FINDINGS.md).
-- `status.py` — một lệnh xem toàn cảnh paper/testnet/canary/fill. `EXECUTION_RUNBOOK.md`, `GO_LIVE_CHECKLIST.md` — vận hành và quyết định lên live.
+- `execution/` — engine đặt lệnh. Testnet diễn tập hằng ngày; live khóa cứng bằng `execution_ceilings_v1.json`. Vòng lặp không người trực có DD guard tự dừng trước khi đặt lệnh nếu tụt 20% ngân sách.
+- `status.py`, `gate_report.py`, `check_live_filters.py`, `track_paper_vs_testnet.py`, `analyze_execution_quality.py` — các lệnh chỉ-đọc để nhìn và để quyết định. `collect_daily_snapshots.py` gom dữ liệu vị thế mỗi ngày cho nghiên cứu Q4 (`data_snapshots/`, không commit).
+- `EXECUTION_RUNBOOK.md`, `GO_LIVE_CHECKLIST.md` — vận hành và quyết định lên live. `RESEARCH_PREREG_Q4_2026.md` — 3 cell nghiên cứu đã đăng ký trước cho tháng 10.
 
 ## Bài học rút ra (tóm tắt cho đỡ đọc file dài)
 

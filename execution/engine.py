@@ -11,7 +11,7 @@ import sqlite3
 import statistics
 import time
 import uuid
-from dataclasses import field, asdict, dataclass
+from dataclasses import field, asdict, dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from pathlib import Path
@@ -24,6 +24,13 @@ from .targets import TargetBook
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+ORDER_STYLES = ("MARKET", "LIMIT_IOC", "MAKER_THEN_MARKET")
+# Binance order states after which an order can no longer fill or rest on the book.
+TERMINAL_ORDER_STATES = frozenset({"FILLED", "CANCELED", "REJECTED", "EXPIRED"})
+# "Unknown order sent." - the cancel lost a race against a fill; re-read, do not escalate.
+BINANCE_UNKNOWN_ORDER_CODE = -2011
 
 
 @dataclass(frozen=True)
@@ -61,9 +68,17 @@ class ExecutionPolicy:
     tolerance_rounding_steps: float = 0.5
     tolerance_min_notional_fraction: float = 0.01
     expected_config_sha256: str = ""
+    # MARKET (default, unchanged), LIMIT_IOC (marketable limit with a buffer), or
+    # MAKER_THEN_MARKET: rest a post-only (GTX) order at the touch for up to
+    # maker_wait_seconds, then cancel and MARKET whatever is left. VIP0 maker fee is 2bps
+    # vs 5bps taker and a passive fill earns ~half the spread instead of paying it - the
+    # largest free lever on net return that leaves the locked signal untouched.
     order_style: str = "MARKET"
     limit_buffer_bps: float = 3.0
     poll_seconds: float = 1.0
+    # Per-leg patience for the resting post-only order. Capped at run time so that the
+    # whole book fits inside HALF the kill-switch release TTL (see _maker_wait_seconds).
+    maker_wait_seconds: float = 10.0
 
     def __post_init__(self) -> None:
         if self.environment not in ("testnet", "live"):
@@ -112,8 +127,10 @@ class ExecutionPolicy:
             or any(char not in "0123456789abcdef" for char in self.expected_config_sha256.lower())
         ):
             raise ValueError("expected_config_sha256 must be a 64-character hex digest")
-        if self.order_style not in {"MARKET", "LIMIT_IOC"}:
-            raise ValueError("order_style must be MARKET or LIMIT_IOC")
+        if self.order_style not in ORDER_STYLES:
+            raise ValueError("order_style must be MARKET, LIMIT_IOC or MAKER_THEN_MARKET")
+        if not (0 < self.maker_wait_seconds < self.kill_switch_release_ttl_seconds):
+            raise ValueError("maker_wait_seconds must be positive and below the kill switch release TTL")
 
 
 @dataclass(frozen=True)
@@ -370,6 +387,9 @@ class PortfolioExecutor:
             raise ValueError(f"executor refuses a client whose base_url is not a {policy.environment} host: {base_url}")
         self.client, self.policy, self.kill_switch, self.audit = client, policy, kill_switch, audit
         self._now = now or (lambda: datetime.now(timezone.utc))
+        # Lot/tick filters for the maker path, loaded once per executor (one process per
+        # daily run). exchange_info is ~1MB; fetching it twice per leg for 34 legs is waste.
+        self._instrument_cache: dict[str, Instrument] = {}
 
     def assert_target_fresh(self, book: TargetBook) -> None:
         age = (self._now() - parse_utc(book.intended_execution_utc)).total_seconds()
@@ -551,6 +571,15 @@ class PortfolioExecutor:
         if force_market or self.policy.order_style == "MARKET":
             params["type"] = "MARKET"
             return params
+        if self.policy.order_style == "MAKER_THEN_MARKET":
+            # Post-only at the touch: JOIN the queue, never cross. BUY rests at the best bid
+            # (rounded down to tick), SELL at the best ask (rounded up). GTX makes the
+            # exchange reject (-5022) or expire the order instead of taking liquidity.
+            ticker = self.client.book_ticker(leg.symbol)
+            touch = _decimal(ticker["bidPrice"] if leg.side == "BUY" else ticker["askPrice"])
+            tick = self._instrument(leg.symbol).tick_size
+            params.update({"type": "LIMIT", "timeInForce": "GTX", "price": format(_round_step(touch, tick, up=leg.side == "SELL"), "f")})
+            return params
         ticker = self.client.book_ticker(leg.symbol)
         raw = _decimal(ticker["askPrice"] if leg.side == "BUY" else ticker["bidPrice"])
         factor = _decimal(1 + self.policy.limit_buffer_bps / 10_000 if leg.side == "BUY" else 1 - self.policy.limit_buffer_bps / 10_000)
@@ -571,13 +600,7 @@ class PortfolioExecutor:
         # effort: a failed re-quote keeps the plan-time reference rather than blocking the
         # submit, and emergency flattens (force_market) are ungated anyway.
         if not force_market:
-            try:
-                fresh = self.client.book_ticker(leg.symbol)
-                fresh_mid = (float(fresh["bidPrice"]) + float(fresh["askPrice"])) / 2.0
-                if fresh_mid > 0:
-                    leg.execution_reference_price = fresh_mid
-            except Exception:
-                pass
+            self._requote_reference(leg)
         try:
             response = self.client.order(**params)
         except BinanceAPIError as original:
@@ -593,6 +616,194 @@ class PortfolioExecutor:
                 if str(response.get("status", "UNKNOWN")) in {"FILLED", "CANCELED", "REJECTED", "EXPIRED"}:
                     break
         return response, client_order_id
+
+    def _requote_reference(self, leg: PlanLeg) -> None:
+        """Best-effort refresh of the slippage reference to the current mid (see _submit_leg)."""
+        try:
+            fresh = self.client.book_ticker(leg.symbol)
+            fresh_mid = (float(fresh["bidPrice"]) + float(fresh["askPrice"])) / 2.0
+            if fresh_mid > 0:
+                leg.execution_reference_price = fresh_mid
+        except Exception:
+            pass
+
+    def _instrument(self, symbol: str) -> Instrument:
+        if symbol not in self._instrument_cache:
+            self._instrument_cache.update(instruments_from_exchange_info(self.client.exchange_info()))
+        try:
+            return self._instrument_cache[symbol]
+        except KeyError:
+            raise RuntimeError(f"{symbol}: no TRADING perpetual instrument in exchange_info") from None
+
+    def _maker_wait_seconds(self, number_of_legs: int) -> float:
+        """Per-leg patience for a resting post-only order.
+
+        The kill-switch release is re-checked before EVERY leg against
+        policy.kill_switch_release_ttl_seconds (execute -> assert_released_for_testnet).
+        If the legs together outlived that TTL the run would halt mid-book through no
+        fault of the market, so the whole book is budgeted at half the TTL: a 34-leg day
+        gets min(maker_wait_seconds, 0.5 * TTL / 34) per leg and can never time itself out.
+        """
+        budget = 0.5 * self.policy.kill_switch_release_ttl_seconds / max(1, int(number_of_legs))
+        return min(float(self.policy.maker_wait_seconds), budget)
+
+    @staticmethod
+    def _api_error_code(exc: BaseException) -> int | None:
+        payload = getattr(exc, "payload", None)
+        if isinstance(payload, dict) and payload.get("code") is not None:
+            try:
+                return int(payload["code"])
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _wait_for_resting_order(self, leg: PlanLeg, order: dict[str, Any], wait_seconds: float) -> dict[str, Any]:
+        """Poll a resting order until terminal or the deadline, then cancel and re-read.
+
+        Returns the order in a TERMINAL state (its executedQty is then final). Raises
+        HaltedError whenever the exchange cannot prove the order is off the book: a
+        resting order left behind is exactly the "stray order" case HaltedError exists for
+        (cancel-only, keep positions), never a flatten. With poll_seconds == 0 the wait is
+        zero-time (order_poll_attempts reads, no sleep) so tests never sleep.
+        """
+        order_id = int(order["orderId"])
+        status = str(order.get("status", "UNKNOWN"))
+        deadline = time.monotonic() + max(0.0, float(wait_seconds))
+        polls = 0
+        while status not in TERMINAL_ORDER_STATES:
+            if self.policy.poll_seconds > 0:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                time.sleep(min(self.policy.poll_seconds, left))
+            elif polls >= self.policy.order_poll_attempts:
+                break
+            order = self.client.get_order(leg.symbol, order_id)
+            status = str(order.get("status", "UNKNOWN"))
+            polls += 1
+        if status in TERMINAL_ORDER_STATES:
+            return order
+        try:
+            self.client.cancel_order(leg.symbol, order_id)
+        except Exception as exc:
+            if self._api_error_code(exc) != BINANCE_UNKNOWN_ORDER_CODE:
+                raise HaltedError(
+                    f"{leg.symbol} {leg.reason}: cancel of resting post-only order {order_id} failed "
+                    f"({type(exc).__name__}: {exc}); order may still rest - cancel-only"
+                ) from exc
+        # Either the cancel went through or it raced a fill (-2011): the order's final
+        # executedQty is only trustworthy from a fresh read, never from the cancel response.
+        try:
+            order = self.client.get_order(leg.symbol, order_id)
+        except Exception as exc:
+            raise HaltedError(
+                f"{leg.symbol} {leg.reason}: cannot re-read post-only order {order_id} after cancel "
+                f"({type(exc).__name__}: {exc}); cancel-only"
+            ) from exc
+        status = str(order.get("status", "UNKNOWN"))
+        if status not in TERMINAL_ORDER_STATES:
+            raise HaltedError(
+                f"{leg.symbol} {leg.reason}: post-only order {order_id} still {status} after cancel; cancel-only"
+            )
+        return order
+
+    @staticmethod
+    def _combine_fills(leg: PlanLeg, maker: dict[str, Any], taker: dict[str, Any] | None, remaining: Decimal) -> dict[str, Any]:
+        """One audit-shaped response for a leg filled by up to two orders.
+
+        Keeps the execution_legs schema untouched: avgPrice is the quantity-weighted
+        average of both fills (so avg_fill_price / fill_slippage_bps mean what they do
+        today) and both raw exchange responses ride along under "maker" / "taker".
+        """
+        def _part(part: dict[str, Any] | None, fallback_qty: Decimal) -> tuple[Decimal, Decimal]:
+            if not isinstance(part, dict):
+                return Decimal("0"), Decimal("0")
+            try:
+                price = _decimal(part.get("avgPrice", 0) or 0)
+                if "executedQty" in part:
+                    qty = _decimal(part.get("executedQty", 0) or 0)
+                else:
+                    # A FILLED response without executedQty (thin fakes, RESULT-less
+                    # payloads) filled what it was asked for; anything else filled nothing.
+                    qty = fallback_qty if str(part.get("status", "")) == "FILLED" else Decimal("0")
+            except ArithmeticError:
+                return Decimal("0"), Decimal("0")
+            return qty, price
+
+        maker_qty, maker_price = _part(maker, Decimal("0"))
+        taker_qty, taker_price = _part(taker, remaining)
+        filled = maker_qty + taker_qty
+        notional = maker_qty * maker_price + taker_qty * taker_price
+        average = notional / filled if filled > 0 else Decimal("0")
+        composite: dict[str, Any] = {
+            "orderId": maker.get("orderId") or (taker or {}).get("orderId", ""),
+            "executedQty": format(filled, "f"), "avgPrice": format(average, "f"),
+            "maker_executed_qty": format(maker_qty, "f"), "taker_executed_qty": format(taker_qty, "f"),
+            "remainder_after_maker": format(remaining, "f"),
+            "maker": maker, "taker": taker,
+        }
+        # No taker means the maker order is terminal and what is left is below one lot
+        # step (normally exactly zero); the contract tolerance judges any dust. Otherwise
+        # the leg is only as filled as its MARKET remainder, exactly like the default style.
+        composite["status"] = "FILLED" if taker is None else str(taker.get("status", "UNKNOWN"))
+        return composite
+
+    def _submit_maker_then_market(
+        self, run_id: str, book: TargetBook, leg: PlanLeg, sequence: int, *,
+        prepared_params: dict[str, Any], prepared_client_order_id: str, wait_seconds: float,
+    ) -> tuple[dict[str, Any], str]:
+        """MAKER_THEN_MARKET for one leg: rest post-only at the touch, then MARKET the rest.
+
+        Every path that ends in a MARKET order goes through _submit_leg with
+        _order_params(force_market=True), so the submit-time re-quote, the fill-slippage
+        gate and the plan-time chunking apply exactly as they do for the default style.
+        """
+        maker_id = prepared_client_order_id
+        instrument = self._instrument(leg.symbol)
+        self._requote_reference(leg)
+        try:
+            maker: dict[str, Any] = self.client.order(**prepared_params)
+        except BinanceAPIError as exc:
+            if self._api_error_code(exc) is not None:
+                # A definitive exchange rejection (e.g. -5022 "would immediately match"):
+                # nothing rests, take the whole leg at market.
+                maker = {"rejected": {"code": self._api_error_code(exc), "message": str(exc)}}
+            else:
+                # Network-class failure: the POST may or may not have reached the book.
+                try:
+                    maker = self.client.get_order_by_client_id(leg.symbol, maker_id)
+                except Exception as lookup_exc:
+                    raise HaltedError(
+                        f"{leg.symbol} {leg.reason}: post-only submit outcome unknown ({exc}) and "
+                        f"lookup failed ({type(lookup_exc).__name__}: {lookup_exc}); cancel-only"
+                    ) from exc
+        if maker.get("orderId"):
+            maker = self._wait_for_resting_order(leg, maker, wait_seconds)
+        try:
+            executed = _decimal(maker.get("executedQty", 0) or 0)
+        except ArithmeticError:
+            executed = Decimal("0")
+        remaining = leg.quantity - executed
+        taker: dict[str, Any] | None = None
+        if remaining >= instrument.step_size:
+            price = _decimal(leg.execution_reference_price) if leg.execution_reference_price > 0 else Decimal("0")
+            if not leg.reduce_only and price > 0 and remaining * price < instrument.min_notional:
+                # The exchange refuses an opening order this small (-4164) and the contract
+                # tolerance will not absorb it. The book is short by less than one
+                # min-notional: hand off, do not liquidate a nearly-correct position.
+                raise HaltedError(
+                    f"{leg.symbol} {leg.reason}: post-only fill left {remaining} ({float(remaining * price):.2f} USDT) "
+                    f"below exchange min notional {instrument.min_notional}; cannot submit remainder - cancel-only"
+                )
+            taker_leg = replace(leg, quantity=remaining)
+            taker_id = self._client_order_id(run_id, book, leg, sequence, prefix="carryt")
+            taker, taker_id = self._submit_leg(
+                run_id, book, taker_leg, sequence,
+                prepared_params=self._order_params(taker_leg, taker_id, force_market=True),
+                prepared_client_order_id=taker_id,
+            )
+            leg.execution_reference_price = taker_leg.execution_reference_price
+        return self._combine_fills(leg, maker, taker, remaining), maker_id
 
     @staticmethod
     def _adverse_slippage_bps(leg: PlanLeg, response: dict[str, Any]) -> float | None:
@@ -949,10 +1160,17 @@ class PortfolioExecutor:
                         ) from pre_exc
                     raise
                 orders_started = True
-                response, client_order_id = self._submit_leg(
-                    run_id, book, leg, index, prepared_params=prepared_params,
-                    prepared_client_order_id=client_order_id,
-                )
+                if self.policy.order_style == "MAKER_THEN_MARKET":
+                    response, client_order_id = self._submit_maker_then_market(
+                        run_id, book, leg, index, prepared_params=prepared_params,
+                        prepared_client_order_id=client_order_id,
+                        wait_seconds=self._maker_wait_seconds(len(legs)),
+                    )
+                else:
+                    response, client_order_id = self._submit_leg(
+                        run_id, book, leg, index, prepared_params=prepared_params,
+                        prepared_client_order_id=client_order_id,
+                    )
                 status = str(response.get("status", "UNKNOWN"))
                 try:
                     self.audit.leg(run_id, index, leg, status, response, client_order_id=client_order_id)
