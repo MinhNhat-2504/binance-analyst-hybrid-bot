@@ -48,3 +48,7 @@ archive/legacy_15m/*.ipynb
 # accrued positioning snapshots (regenerable only for the last 30 days - back it up, do not commit)
 data_snapshots/
 _workflow_buildout.js
+
+# research kline/funding cache - regenerable, never commit
+.honest_cache/
+reports/live_filters_check.json
