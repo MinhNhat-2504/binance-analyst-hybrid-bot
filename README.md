@@ -32,6 +32,17 @@ Vài hướng khác cũng đã đo rồi đóng: rebalance mỗi 8h (Sharpe 0.84
 
 Nói trước cho gọn: **chưa có gì chứng minh bot kiếm được tiền.** Đang có 30 ngày paper, không phải một track record.
 
+`python status.py` sáng nay in ra đúng thế này:
+
+```
+CARRY-7d status  2026-09-03 21:06 UTC  (04:06 local)
+  paper   day 30/60 (target 90)  equity 1.0151 (+1.51%)  sharpe +1.43  maxDD -2.5%  last booked 2026-09-01
+  testnet COMPLETE 3/20 needed  last run 2026-08-27  missed (machine off?) 7: 2026-08-30, ... 2026-09-03
+  markers none - next scheduled run will proceed
+  canary  2026-09-03 (1d ago)  Binance +1.11 vs Bybit +1.26  funding +5.3%/yr  clear
+  fills   90 legs  shortfall vs paper open: mean -5.2bps  p90 +62.6bps  (paper assumes ~10)
+```
+
 Paper trading từ 03/08, hôm nay là ngày 30/60. Equity +1.51%, Sharpe 1.43, drawdown sâu nhất −2.5%. Nhìn thì ổn, nhưng độ lệch chuẩn ngày là 0.70%, nên 1σ của một tháng đã khoảng 3.8%. Con số +1.51% kia gần như không nói lên điều gì.
 
 Từ 25/08 có thêm một vòng diễn tập tự động mỗi sáng, đặt đúng cái rổ đó lên Binance testnet qua engine thật trong `execution/` rồi tự đối chiếu lại. Mới được 3 lần COMPLETE trên 20 lần cần, 90 chân lệnh đã khớp. Thiếu vì tuần 28/08–03/09 mất trắng: task Windows chạy ở chế độ tương tác nên mỗi sáng bật một cửa sổ console, đóng cửa sổ đó là Python ăn CTRL_CLOSE và chết giữa chừng, để lại lock cùng một marker rỗng, và cơ chế fail-safe chặn luôn mấy ngày sau. Sàn không bị đụng, nhưng mất 7 ngày trong đúng cái tháng cần đủ 20 run. Đã sửa, ghi trong [carry_paper_incidents.md](carry_paper_incidents.md).
