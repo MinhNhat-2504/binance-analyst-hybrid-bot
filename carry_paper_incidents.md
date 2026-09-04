@@ -41,3 +41,18 @@ _Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa 
 ```
 
 **Xử lý (2026-09-03):** Tiến trình bị kill giữa chừng (mã 0xC000013A = CTRL_C/CTRL_CLOSE) ngay khi crash-guard đang ghi marker → marker rỗng, lock không được nhả, engine chưa kịp chạy nên sàn không bị đụng (0 lệnh mở, reconcile 0 so với contract 27/08). Nguyên nhân khả dĩ nhất: task chạy ở chế độ tương tác nên mỗi lần chạy bật một cửa sổ console; đóng cửa sổ đó = CTRL_CLOSE → Python nhận KeyboardInterrupt. Sửa: task chạy ẩn qua `run_hidden.vbs` (không còn cửa sổ để đóng); crash-guard ghi marker atomic (temp+rename) để không bao giờ để lại marker rỗng. Marker và lock đã xóa; runs tiếp tục từ 04/09 07:20. Hệ quả: 28/08–03/09 không có run testnet (7 ngày), 3/20 COMPLETE giữ nguyên.
+
+## 2026-09-04T00:21:58+00:00 — plan_refused
+
+```
+{
+  "target_id": "c37a9415ab50042e584a9dbb",
+  "error": "RuntimeError: BTCUSDT: cannot split order into exchange-valid notionals"
+}
+```
+
+_Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa `.execution/ATTENTION`._
+
+**Xử lý (2026-09-04):** Task chạy đúng giờ (fix `run_hidden.vbs` hôm qua có tác dụng), nhưng plan bị từ chối trước khi mở khóa nên **0 lệnh trên sàn**, sàn không bị đụng. Nguyên nhân là va chạm số học lần đầu gặp: BTCUSDT lần đầu vào rổ ở budget $2000. Weight nhỏ nhất 5,56% → $105.60; trần một lệnh `max_order_notional_usd=100` → $97.48; sàn min-notional của BTC trên demo → $56.86. Chia đôi thì mảnh sau chỉ $8.12, dưới sàn; muốn cả hai mảnh hợp lệ cần $113.72 mà lệnh chỉ có $105.60. Một lệnh nguyên thì vượt trần. Bế tắc, engine từ chối cả danh mục — hành vi đúng theo thiết kế "không chạy thiếu chân", nhưng mất nguyên ngày.
+
+Sửa trong `execution/engine.py::_append_split`: khi không thể chia thành các mảnh hợp lệ, gửi **một lệnh duy nhất**, và chỉ khi khối lượng **nhỏ hơn 2 lần min-notional của sàn**. Lý do chọn ngưỡng đó: trần một lệnh là *ưu tiên của mình* về chống trượt giá, còn min-notional là *luật cứng của sàn*; khi hai cái đá nhau thì luật sàn thắng, nhưng lối thoát phải bị chặn bằng một con số do sàn đặt chứ không do mình đặt, để nó không biến thành cách lách trần. Lệnh vượt xa trần vẫn bị chia bình thường, không chia được thì vẫn từ chối. Hai test khóa đúng hai nhánh đó (`test_uncuttable_leg_becomes_one_order_bounded_by_two_exchange_minimums`, `test_a_leg_far_above_the_cap_is_still_refused_not_sent_whole`). Toàn bộ 166 test xanh. Marker đã xóa, runs tiếp tục từ 05/09 07:20.

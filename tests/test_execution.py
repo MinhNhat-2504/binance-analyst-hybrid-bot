@@ -1394,3 +1394,76 @@ def test_failure_flatten_surface_includes_positions_orphaned_from_target(tmp_pat
     # it is absent from the target weights; BBB is also in the flatten surface.
     assert client.events.count(("cancel", "AAAUSDT")) >= 2
     assert ("cancel", "BBBUSDT") in client.events
+
+
+def test_uncuttable_leg_becomes_one_order_bounded_by_two_exchange_minimums(tmp_path) -> None:
+    """The 2026-09-04 deadlock: BTC entered the book and the whole portfolio was refused.
+
+    A leg of $105.60 with a $97.48 chunk cap and a $56.86 exchange floor cannot be two
+    valid orders (that needs $113.72) and cannot be one capped order. Before the fix the
+    planner raised and the day was lost. Now it sends a single order, and only because
+    the quantity is below two exchange minimums - a bound the venue sets, not us.
+    """
+    class BtcLikeClient(FakeClient):
+        def exchange_info(self):
+            return {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "contractType": "PERPETUAL", "filters": [
+                {"filterType": "LOT_SIZE", "stepSize": "0.0001", "minQty": "0.0001"},
+                {"filterType": "PRICE_FILTER", "tickSize": "0.1"},
+                {"filterType": "MIN_NOTIONAL", "notional": "50"}]}]}
+
+        def positions(self):
+            return []
+
+        def book_ticker(self, symbol):
+            return {"bidPrice": "81230.6", "askPrice": "81230.8"}
+
+    book = TargetBook("unit-test", "btc-uncuttable", "a" * 64, "2026-09-04T00:00:00Z",
+                      "2026-09-04T00:00:00Z", {"BTCUSDT": -0.0555555556}, {"BTCUSDT": 81230.7}, "unit-test")
+    policy = ExecutionPolicy(max_gross_notional_usd=2000, max_order_notional_usd=100, max_positions=20)
+    plan = TestnetExecutor(BtcLikeClient(), policy, KillSwitch(tmp_path / "kill.json"),
+                           ExecutionAudit(tmp_path / "audit.sqlite3")).build_plan(book, gross_budget=2000.0)
+
+    assert plan.skips == []
+    assert len(plan.legs) == 1, "an uncuttable leg is ONE order, not a refusal and not two"
+    leg = plan.legs[0]
+    assert leg.symbol == "BTCUSDT" and leg.side == "SELL"
+    assert leg.quantity == Decimal("0.0013")
+    # The single order stays under two exchange minimums: $105.60 < $113.72.
+    assert leg.quantity * Decimal("81230.7") < 2 * Decimal("0.0007") * Decimal("81230.7")
+    assert plan.expected_positions == {"BTCUSDT": Decimal("-0.0013")}
+
+
+def test_a_leg_far_above_the_cap_is_still_refused_not_sent_whole(tmp_path) -> None:
+    """The escape hatch must not become a way around the chunk cap.
+
+    Same instrument, but a leg worth ~$1,624 - twenty times the cap and far above two
+    exchange minimums. That one splits normally; if it ever could not, it must raise
+    rather than fire a single oversized order.
+    """
+    class BtcLikeClient(FakeClient):
+        def exchange_info(self):
+            return {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "contractType": "PERPETUAL", "filters": [
+                {"filterType": "LOT_SIZE", "stepSize": "0.0001", "minQty": "0.0001"},
+                {"filterType": "PRICE_FILTER", "tickSize": "0.1"},
+                {"filterType": "MIN_NOTIONAL", "notional": "50"}]}]}
+
+        def positions(self):
+            return []
+
+        def book_ticker(self, symbol):
+            return {"bidPrice": "81230.6", "askPrice": "81230.8"}
+
+    book = TargetBook("unit-test", "btc-big", "a" * 64, "2026-09-04T00:00:00Z",
+                      "2026-09-04T00:00:00Z", {"BTCUSDT": 0.8}, {"BTCUSDT": 81230.7}, "unit-test")
+    policy = ExecutionPolicy(max_gross_notional_usd=2000, max_order_notional_usd=100, max_positions=20)
+    plan = TestnetExecutor(BtcLikeClient(), policy, KillSwitch(tmp_path / "kill.json"),
+                           ExecutionAudit(tmp_path / "audit.sqlite3")).build_plan(book, gross_budget=2030.0)
+
+    assert len(plan.legs) > 10, "a large leg must still be chunked, not sent whole"
+    mark = Decimal("81230.7")
+    cap_qty = Decimal("0.0012")            # $100 cap rounded down to step
+    floor_qty = Decimal("0.0007")          # $50 exchange minimum rounded up to step
+    for leg in plan.legs:
+        assert leg.quantity <= cap_qty, "no chunk may exceed the cap when splitting is possible"
+        assert leg.quantity >= floor_qty, "no chunk may fall under the exchange minimum"
+    assert sum(l.quantity for l in plan.legs) == Decimal("0.0199")

@@ -438,9 +438,24 @@ class PortfolioExecutor:
         if chunks[-1] < chunk_minimum and len(chunks) > 1:
             needed = chunk_minimum - chunks[-1]
             if chunks[-2] - needed < chunk_minimum:
-                raise RuntimeError(f"{symbol}: cannot split order into exchange-valid notionals")
-            chunks[-2] -= needed
-            chunks[-1] += needed
+                # The chunk cap and the exchange minimum have collided. It happens when a
+                # leg lands between max_order_notional_usd and 2x the exchange minimum:
+                # too big for one capped order, too small to make two valid ones.
+                # (2026-09-04: BTC entered the book at $105.60 with a $97.48 cap and a
+                # $56.86 exchange floor. Two chunks would need $113.72; refusing the leg
+                # refuses the whole portfolio.)
+                #
+                # The cap is OUR preference about market impact; the minimum is the
+                # exchange's rule. So send one order - and only when it is smaller than
+                # two exchange minimums, which is the tightest bound available and is set
+                # by the venue rather than by us. Anything larger still refuses.
+                if quantity < 2 * minimum:
+                    chunks = [quantity]
+                else:
+                    raise RuntimeError(f"{symbol}: cannot split order into exchange-valid notionals")
+            else:
+                chunks[-2] -= needed
+                chunks[-1] += needed
         for chunk in chunks:
             if chunk < instrument.min_qty or (not reduce_only and chunk * _decimal(mark) < instrument.min_notional):
                 raise RuntimeError(f"{symbol}: order chunk is below exchange minimum")
