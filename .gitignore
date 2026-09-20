@@ -55,3 +55,6 @@ CLEAN_HISTORY.bat
 # research kline/funding cache - regenerable, never commit
 .honest_cache/
 reports/live_filters_check.json
+
+# ho so ca nhan, khong thuoc ve repo
+*.docx

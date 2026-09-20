@@ -56,3 +56,17 @@ _Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa 
 **Xử lý (2026-09-04):** Task chạy đúng giờ (fix `run_hidden.vbs` hôm qua có tác dụng), nhưng plan bị từ chối trước khi mở khóa nên **0 lệnh trên sàn**, sàn không bị đụng. Nguyên nhân là va chạm số học lần đầu gặp: BTCUSDT lần đầu vào rổ ở budget $2000. Weight nhỏ nhất 5,56% → $105.60; trần một lệnh `max_order_notional_usd=100` → $97.48; sàn min-notional của BTC trên demo → $56.86. Chia đôi thì mảnh sau chỉ $8.12, dưới sàn; muốn cả hai mảnh hợp lệ cần $113.72 mà lệnh chỉ có $105.60. Một lệnh nguyên thì vượt trần. Bế tắc, engine từ chối cả danh mục — hành vi đúng theo thiết kế "không chạy thiếu chân", nhưng mất nguyên ngày.
 
 Sửa trong `execution/engine.py::_append_split`: khi không thể chia thành các mảnh hợp lệ, gửi **một lệnh duy nhất**, và chỉ khi khối lượng **nhỏ hơn 2 lần min-notional của sàn**. Lý do chọn ngưỡng đó: trần một lệnh là *ưu tiên của mình* về chống trượt giá, còn min-notional là *luật cứng của sàn*; khi hai cái đá nhau thì luật sàn thắng, nhưng lối thoát phải bị chặn bằng một con số do sàn đặt chứ không do mình đặt, để nó không biến thành cách lách trần. Lệnh vượt xa trần vẫn bị chia bình thường, không chia được thì vẫn từ chối. Hai test khóa đúng hai nhánh đó (`test_uncuttable_leg_becomes_one_order_bounded_by_two_exchange_minimums`, `test_a_leg_far_above_the_cap_is_still_refused_not_sent_whole`). Toàn bộ 166 test xanh. Marker đã xóa, runs tiếp tục từ 05/09 07:20.
+
+## 2026-09-05T00:23:35+00:00 — run_needs_review
+
+```
+{
+  "target_id": "58984bd557cba89ba34b82ff",
+  "engine_status": "UNRESOLVED_EXPOSURE",
+  "engine_detail": "network failure calling /fapi/v1/order: HTTPSConnectionPool(host='demo-fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/order?symbol=SUIUSDT&orderId=1065808868&recvWindow=5000&timestamp=1788567719640&signature=f4763f08b491117e32b5299ffb9135ea59a11f0e4c59afafcce59966f007c88a (Caused by SSLError(SSLEOFError(8, 'EOF occurred in violation of protocol (_ssl.c:2427)')))",
+  "reconcile_exit": 3,
+  "reconcile_tail": "{\n  \"ATTENTION\": \"target has a run that ended in a hand-off state; positions may be live and unhedged\",\n  \"sidecar\": \"no sidecar (audit DB accepted the terminal row)\",\n  \"target_id\": \"58984bd557cba89ba34b82ff\",\n  \"runs_with_open_exposure\": [\n    {\n      \"run_id\": \"56188bafbe02451395e7043b7998553c\",\n      \"started_utc\": \"2026-09-05T00:21:13.811+00:00\",\n      \"finished_utc\": \"2026-09-05T00:23:35.127+00:00\",\n      \"status\": \"UNRESOLVED_EXPOSURE\",\n      \"message\": \"network failure calling /fapi/v1/order: HTTPSConnectionPool(host='demo-fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/order?symbol=SUIUSDT&orderId=1065808868&recvWindow=5000&timestamp=1788567719640&signature=f4763f08b491117e32b5299ffb9135ea59a11f0e4c59afafcce59966f007c88a (Caused by SSLError(SSLEOFError(8, 'EOF occurred in violation of protocol (_ssl.c:2427)')))\"\n    }\n  ],\n  \"positions_held_at_handoff\": {\n    \"positions\": [],\n    \"open_orders\": []\n  },\n  \"action\": \"inspect the exchange, decide flatten/keep manually, then reconcile with --run-id if a later COMPLETE run exists\"\n}\n"
+}
+```
+
+_Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa `.execution/ATTENTION`._

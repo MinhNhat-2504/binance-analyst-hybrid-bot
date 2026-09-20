@@ -88,3 +88,25 @@ Ngân sách quý: **≤3 hướng**, đúng như kỷ luật đã ghi trong `HON
 6. Sửa grid/ngưỡng/universe sau khi thấy kết quả = **hủy cell**, không phải "tinh chỉnh".
 
 *Một ghi chú robustness ngoài ngân sách 3 hướng (không tốn slot vì nó kiểm tra chiến lược đang chạy, không tìm cái mới): 6 đồng trong universe trả funding mỗi 4 giờ (TIA, ENA, JTO, PYTH, TAO, ORDI) trong khi paper giả định 3 kỳ/ngày, và xếp hạng theo tổng funding 7 ngày về mặt cơ học ưu ái nhóm 4h. Câu hỏi: CARRY-7d có sống sót khi loại nhóm 4h không? Chạy cùng lúc với cell 1.*
+
+---
+
+## Phụ lục 04/09/2026 — hai đính chính về dữ liệu (không đổi grid, ngưỡng hay luật quyết định)
+
+Viết `honest/metrics.py` (bộ tải, **không đánh giá gì**) trong tháng 9 để 01/10 chạy được ngay. Trong lúc dựng, hai chi tiết trong phần mô tả dữ liệu ở trên hóa ra sai. Ghi lại đây thay vì sửa lén phần trên, và nói rõ: cả hai chỉ là *mô tả nguồn*, không có grid, ngưỡng, universe hay luật quyết định nào thay đổi.
+
+**1. Dòng cuối ngày là 23:50, không phải 23:55.** File ngày 01/09/2026 kết thúc ở 23:50. Nếu hardcode 23:55 như phần mô tả cell 1 và 3 đang viết, mọi ngày đều rỗng. Bộ tải lấy **dòng cuối cùng của ngày**, đúng tinh thần "snapshot cuối ngày, biết trước khi khớp lệnh 00:00 hôm sau" mà cell yêu cầu.
+
+**2. REST và kho lưu trữ lệch nhau đúng một ngày, và đây suýt giết oan hai cell.** Cell 1 và 3 đều có tiêu chí kill: *"lệch kho lưu trữ so với REST > 1% trên > 5% số ngày-tên"*. Chạy lần đầu, so theo ngày với ngày: lệch trung vị 1–2%, ngày tệ nhất 10%, **75% số ngày vượt ngưỡng** — trượt kill, hai cell chết.
+
+Nhưng nguyên nhân không phải dữ liệu bẩn. `/futures/data/openInterestHist` với `period=1d` gắn nhãn 00:00 ngày D và trả về OI **tại đúng thời điểm đó**, tức chính là chốt cuối ngày D−1 của kho lưu trữ:
+
+```
+kho lưu trữ chốt ngày[D]  ==  REST nhãn[D+1]
+```
+
+Xếp đúng như vậy thì lệch **0.00%** trên cả 4 đồng đã kiểm, 30 ngày mỗi đồng. Hai nguồn là một chuỗi. Tiêu chí kill **không** bị kích hoạt.
+
+Hệ quả phải nhớ: `collect_daily_snapshots.py` lưu giá trị REST dưới nhãn ngày D (đúng, vì đó là trạng thái lúc 00:00 ngày D), còn `honest/metrics.py` lưu cùng con số đó dưới nhãn D−1 (cũng đúng, vì đó là chốt cuối ngày D−1). Hai cách gọi tên đều đúng về cùng một thời điểm, nên **không bao giờ được join hai nguồn theo ngày thô** — phải dịch một bên trước. Panel dùng nhãn của kho lưu trữ vì đó là quy ước của harness: giá đóng cửa thuộc về ngày của nó và được khớp ở open hôm sau.
+
+Bài học đúng kiểu repo này: một tiêu chí kill viết đúng vẫn có thể bắn nhầm nếu quy ước thời gian của hai nguồn khác nhau. Kiểm tra rẻ nhất — dịch một ngày rồi so lại — mất năm phút và cứu cả một quý nghiên cứu. Test `test_rest_and_archive_are_the_same_series_one_day_apart` khóa lại chuyện đó.
