@@ -62,7 +62,7 @@ python run_live_execution.py --execute --budget-usd <vốn> --confirm-live I_AUT
 python reconcile_paper_vs_testnet.py --audit .execution/live_execution.sqlite3
 ```
 
-Tuần 1–2 live: chạy tay mỗi sáng, so PnL live với paper **mỗi ngày** (`analyze_execution_quality.py`). Chỉ bàn chuyện tự động hóa live sau ≥10 ngày tracking sạch.
+Tuần 1–2 live: chạy tay mỗi sáng, so PnL live với paper **mỗi ngày** (`analyze_execution_quality.py`). Sau ≥10 ngày tracking sạch mới bật vòng không người trực: viết tay `unattended_live_v1.json` (mẫu trong docstring của `run_carry_live_daily.py`, sha ceilings phải khớp, có ngày hết hạn), không sửa lịch vì stage 00:20 UTC đã gọi sẵn vòng live ngay sau vòng testnet. Vòng testnet tự tắt khi live > 0.
 
 ## Phần 6 — Tiêu chí DỪNG live (viết trước, tuân theo sau)
 
@@ -84,7 +84,7 @@ Tháng 1 live: vốn khởi điểm. Mỗi tháng sạch (tracking ≤1%/tháng,
 | ~20/09 | mở tài khoản (hoặc sub-account) Binance **riêng cho bot**, bật futures, tạo key **read-only** trước, chưa nạp tiền | bạn |
 | T7 26/09 | **diễn tập kill-switch giữa chừng** trên testnet: chạy tay, bật kill-switch lúc đang đặt lệnh, xử lý `HALTED_*` theo runbook, ghi rồi đóng incident | bạn + runbook |
 | 02/10 sáng | `python gate_report.py` → đọc verdict. Nếu GO: sang Phần 4 và **ngủ một đêm** trước khi sửa ceilings | bạn |
-| tháng 10 | thiết kế **live runner không người trực** (cùng cấu trúc self-release như testnet, DD guard chuyển vào engine, cờ `unattended_live` riêng). Chỉ build sau ≥10 ngày live chạy tay sạch — **tháng 10 là tháng chạy tay**, nói trước để không ảo tưởng "bật là xong" | bạn |
+| tháng 10 | live runner không người trực **đã viết** (`run_carry_live_daily.py`, cùng thân với vòng testnet, trơ cho tới khi có ceilings v2 + file ủy quyền viết tay + sha khớp). Chỉ **bật** sau ≥10 ngày live chạy tay sạch — **tháng 10 là tháng chạy tay** | bạn |
 | tháng 10 | nghiên cứu Q4 theo `RESEARCH_PREREG_Q4_2026.md` (đã đăng ký trước, không thêm cell giữa chừng) | bạn |
 
 **Cập nhật 25/09 — lịch thật.** Testnet bị chặn từ 05/09 tới 25/09 (incident đã đóng, xem `carry_paper_incidents.md`), nên cổng 02/10 chắc chắn NOT-YET ở điều kiện ≥20 COMPLETE (đang 3/20). Không đổi luật: ngày 60 vẫn được chấm đúng ngày 02/10 cho phần paper; phần testnet chạy tiếp tới mốc **ngày 90 = 01/11/2026**, cần 17 COMPLETE trong 36 ngày, tức máy thức khoảng một nửa số sáng. Đây là đúng cơ chế "ngày 60 chưa đủ thì kéo tới 90" đã ghi trong config, không phải nới cổng. Cũng ghi cho thẳng: canary 3 tuần liền nghiêng về Bybit (gap −0.41 ngày 20/09) — nếu tới 01/11 xu hướng đó không đảo, phải cân nhắc điều kiện dừng ở Phần 6 *trước* khi bàn ceilings v2.

@@ -99,6 +99,16 @@ Guard đo **đô-la so với đỉnh**, không phải phần trăm tài khoản 
 
 Mã exit của vòng lặp tự động: 4 export thất bại · 5 plan bị từ chối hoặc lỡ cửa sổ · 6 lỗi sau khi đã có lệnh (đọc audit) · 7 lock kẹt · **8 DD guard**.
 
+## Vòng lặp live không người trực (đã viết, đang trơ)
+
+`run_carry_live_daily.py` là **cùng một thân vòng lặp** với testnet (`run_carry_testnet_daily.run_loop`), chỉ khác kill-switch (`kill_switch_live.json`), audit (`live_execution.sqlite3`), lock, log (`carry_live_log.csv`) và cổng cho phép. Nó chạy mỗi sáng ngay sau vòng testnet trong cùng stage `run_daily.py testnet`, và **thoát mã 2, không ghi gì** chừng nào chưa đủ ba điều kiện độc lập:
+
+1. `execution_ceilings_v1.json` khai `live > 0` (ceilings v2 có review, Phần 4 checklist).
+2. File `unattended_live_v1.json` do bạn viết tay (gitignore, `git pull` không bao giờ tự bật được): `unattended_live: true`, `max_gross_usd` ≤ ceiling, `expires_utc`, `operator_note`.
+3. `ceilings_sha256` trong file đó khớp sha của file ceilings hiện tại. Đổi ceilings là tự động thu hồi ủy quyền, phải viết lại.
+
+Ngân sách thực dùng = min(ceiling, `max_gross_usd`); DD guard đo 20% của con số đó, đỉnh lưu ở `.execution/equity_hwm_live.json`. Marker ATTENTION dùng chung với testnet: một sự cố chưa đọc chặn cả hai. Khi live > 0, vòng testnet tự tắt, nên không bao giờ có hai vòng cùng có quyền. Lịch: theo checklist, chỉ viết `unattended_live_v1.json` sau ≥10 ngày live chạy tay sạch bằng `run_live_execution.py`.
+
 ## Những thứ engine cố tình KHÔNG làm
 
 - Không tự chạy lại sau halt. Mọi lần chạy đều cần release mới.

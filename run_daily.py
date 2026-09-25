@@ -5,7 +5,7 @@ to one laptop's Python. Moving the bot anywhere else meant rewriting them. Now t
 files, a cron line, or the in-container scheduler all call the same thing:
 
     python run_daily.py paper      # 00:05 UTC  book paper, collect snapshots, notify
-    python run_daily.py testnet    # 00:20 UTC  unattended rehearsal, then status + notify
+    python run_daily.py testnet    # 00:20 UTC  unattended testnet loop, then the (inert) live loop, status, notify
     python run_daily.py canary     # Sun 01:00 UTC  signal-health canaries
     python run_daily.py status     # write status.txt (and a Desktop copy when there is one)
 
@@ -38,8 +38,13 @@ STAGES: dict[str, list[tuple[str, list[str], str]]] = {
         ("snapshots", ["collect_daily_snapshots.py"], "collect_snapshots_task.log"),
         ("notify", ["notify_markers.py"], "notify_markers_task.log"),
     ],
+    # The 00:20 UTC slot runs BOTH loops. Exactly one is ever armed: the testnet loop
+    # refuses once the ceilings file declares live > 0, and the live loop exits 2 (nothing
+    # written) until ceilings v2 AND unattended_live_v1.json AND a matching ceilings sha
+    # all exist. So the day the operator arms live, the schedule needs no change.
     "testnet": [
         ("testnet", ["-B", "run_carry_testnet_daily.py"], "carry_testnet_task.log"),
+        ("live", ["-B", "run_carry_live_daily.py"], "carry_live_task.log"),
         ("status", ["run_daily.py", "status"], "status_task.log"),
         ("notify", ["notify_markers.py"], "notify_markers_task.log"),
     ],

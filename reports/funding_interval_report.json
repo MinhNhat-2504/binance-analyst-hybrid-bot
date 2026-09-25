@@ -1,0 +1,78 @@
+{
+  "as_of": "2026-09-25",
+  "four_hour_symbols": {
+    "IMXUSDT": 4,
+    "ENJUSDT": 4,
+    "FLOWUSDT": 4,
+    "KAVAUSDT": 4,
+    "ZILUSDT": 4,
+    "GMTUSDT": 4,
+    "TIAUSDT": 4,
+    "ORDIUSDT": 4,
+    "PYTHUSDT": 4,
+    "JTOUSDT": 4,
+    "ENAUSDT": 4,
+    "TAOUSDT": 4,
+    "XTZUSDT": 4
+  },
+  "in_discovery": [
+    "ENAUSDT",
+    "JTOUSDT",
+    "ORDIUSDT",
+    "PYTHUSDT",
+    "TAOUSDT",
+    "TIAUSDT"
+  ],
+  "in_holdout": [
+    "ENJUSDT",
+    "FLOWUSDT",
+    "GMTUSDT",
+    "IMXUSDT",
+    "KAVAUSDT",
+    "XTZUSDT",
+    "ZILUSDT"
+  ],
+  "ledger": {
+    "days": 52,
+    "days_with_any_4h_name_pct": 100.0,
+    "share_of_book_slots_pct": 17.9,
+    "per_symbol": {
+      "ENAUSDT": {
+        "interval_h": 4,
+        "days_long": 4,
+        "days_short": 16,
+        "in_book_pct": 38.5
+      },
+      "JTOUSDT": {
+        "interval_h": 4,
+        "days_long": 4,
+        "days_short": 22,
+        "in_book_pct": 50.0
+      },
+      "ORDIUSDT": {
+        "interval_h": 4,
+        "days_long": 0,
+        "days_short": 31,
+        "in_book_pct": 59.6
+      },
+      "PYTHUSDT": {
+        "interval_h": 4,
+        "days_long": 0,
+        "days_short": 33,
+        "in_book_pct": 63.5
+      },
+      "TAOUSDT": {
+        "interval_h": 4,
+        "days_long": 0,
+        "days_short": 30,
+        "in_book_pct": 57.7
+      },
+      "TIAUSDT": {
+        "interval_h": 4,
+        "days_long": 2,
+        "days_short": 16,
+        "in_book_pct": 34.6
+      }
+    }
+  }
+}

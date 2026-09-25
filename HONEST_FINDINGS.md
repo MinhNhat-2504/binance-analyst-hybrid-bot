@@ -178,3 +178,13 @@ Ba hệ quả phải nói thẳng:
 3. `clean_research/` nghiêm hơn vì nó đòi từng khối tự đứng, và với chuỗi nhiễu thế này thì không khối ngắn nào đứng nổi, dù edge có thật hay không. Không sửa pipeline nào cả; chỉ sửa cách đọc.
 
 File: `reconcile_evaluators.py`, `reports/evaluator_reconciliation.json`.
+
+---
+
+## Rổ CARRY-7d nghiêng về các đồng funding 4 giờ (đo 25/09/2026, phần ledger)
+
+`measure_funding_interval.py --ledger` đọc `/fapi/v1/fundingInfo` và 52 ngày paper. Sáu đồng discovery đang settle mỗi 4 giờ (ENA, JTO, ORDI, PYTH, TAO, TIA; hold-out có thêm 7). Trong 52 ngày paper: có ít nhất một đồng 4h trong rổ **100% số ngày**, chúng chiếm **17.9% tổng số chỗ** dù chỉ là 6/42 tên (14%), và gần như chỉ ở bên short: PYTH short 33/52 ngày, ORDI 31, TAO 30, JTO 22, ENA 16, TIA 16. Long chỉ 10 lần-ngày trên cả sáu.
+
+Đọc thẳng: Binance chuyển một hợp đồng sang 4h đúng khi funding của nó cực đoan, và xếp hạng theo tổng funding 7 ngày đưa đúng những tên đó lên đầu bên short. Không phải lỗi, không tune. Nhưng đây là nơi paper và live sẽ lệch nhau (paper giả định 3 kỳ settle/ngày ở quy tắc ranh giới funding), và là nơi một cú squeeze đánh trúng nhất. Phần backtest loại 6 tên này chạy ngày 01/10 cùng cell 1 theo lịch pre-reg.
+
+File: `reports/funding_interval_report.json`.

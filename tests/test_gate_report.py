@@ -242,3 +242,48 @@ def test_exposure_status_in_last_run_fails_cleanly(tmp_path):
     exp = next(c for c in res.conditions if c.name == "testnet exposure clean")
     assert exp.status == gr.FAIL and "HALTED_MID_BOOK" in exp.measured
     assert res.verdict == "NOT-YET"
+
+
+def _canary_gaps(root, rows):
+    """rows: (date, binance_sharpe, bybit_sharpe, alert). gap is derived, as run_canaries writes it."""
+    with (root / "canary_log.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["date", "window_days", "sharpe_binance_weights", "sharpe_bybit_weights", "gap", "median_funding_ann_pct", "alerts"])
+        for d, b, y, alert in rows:
+            w.writerow([d.isoformat(), 180, b, y, round(b - y, 3), 5.0, alert])
+
+
+def test_three_inverted_weeks_block_go_without_any_alert_row(tmp_path):
+    """13/09 and 20/09 escaped run_canaries' threshold by 0.002; the trend must still count."""
+    today = _full_green(tmp_path)
+    _canary_gaps(tmp_path, [(today - timedelta(days=21), 1.6, 1.35, ""),
+                            (today - timedelta(days=14), 1.13, 1.34, ""),
+                            (today - timedelta(days=7), 1.00, 1.28, ""),
+                            (today - timedelta(days=1), 1.02, 1.43, "")])
+    res = gr.evaluate(tmp_path, today)
+    c = next(x for x in res.conditions if x.name == "signal canary")
+    assert c.status == gr.FAIL and not c.terminal
+    assert "3 consecutive weeks" in c.note
+    assert res.verdict != "GO"
+    assert res.facts["canary"]["inverted_weeks"] == 3
+
+
+def test_a_positive_week_breaks_the_inversion(tmp_path):
+    today = _full_green(tmp_path)
+    _canary_gaps(tmp_path, [(today - timedelta(days=14), 1.0, 1.3, ""),
+                            (today - timedelta(days=7), 1.5, 1.2, ""),
+                            (today - timedelta(days=1), 1.0, 1.3, "")])
+    res = gr.evaluate(tmp_path, today)
+    c = next(x for x in res.conditions if x.name == "signal canary")
+    assert c.status == gr.PASS
+
+
+def test_three_alert_weeks_are_terminal(tmp_path):
+    today = _full_green(tmp_path)
+    _canary_gaps(tmp_path, [(today - timedelta(days=14), 0.8, 1.1, "SIGNAL: fading"),
+                            (today - timedelta(days=7), 0.7, 1.1, "SIGNAL: fading"),
+                            (today - timedelta(days=1), 0.6, 1.2, "SIGNAL: fading")])
+    res = gr.evaluate(tmp_path, today)
+    c = next(x for x in res.conditions if x.name == "signal canary")
+    assert c.status == gr.FAIL and c.terminal
+    assert res.verdict == "NO-GO"

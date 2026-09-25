@@ -49,6 +49,7 @@ TESTNET_START = date(2026, 8, 25)
 TESTNET_COMPLETE_REQUIRED = 20
 TRACKING_WEEKLY_LIMIT_PCT = 1.0        # checklist Part 6: > 1%/week ...
 TRACKING_CONSECUTIVE_WEEKS = 3         # ... for 3 consecutive weeks -> stop
+CANARY_TREND_WEEKS = 3      # consecutive weeks of gap < 0 that block GO; 3 ALERT weeks are terminal
 CANARY_STALE_DAYS = 8                  # weekly task; > 8 days means it is not running
 CANARY_LOOKBACK_ROWS = 4
 PAPER_STALE_DAYS = 2                   # a fill day books at the next open, so 1-2 days lag is normal
@@ -432,11 +433,31 @@ def evaluate(root: Path, today: date) -> GateResult:
         meas = (f"{last['date']} ({age}d ago) Binance {float(last['sharpe_binance_weights']):+.2f} "
                 f"vs Bybit {float(last['sharpe_bybit_weights']):+.2f}")
         thr = f"fresh (<= {CANARY_STALE_DAYS}d), no ALERT in last {CANARY_LOOKBACK_ROWS}"
-        if alerts:
+        # Trend rule (25/09): three consecutive weeks with the Binance-weight Sharpe below
+        # the Bybit-weight Sharpe is the named structural fragility playing out, whether
+        # or not any single week tripped run_canaries.py's threshold (13/09 escaped it by
+        # 0.002). It blocks GO - i.e. blocks adding capital - until the gap turns positive.
+        # Three consecutive ALERT rows are terminal: the checklist's "consider exit".
+        trend = crows[-CANARY_TREND_WEEKS:]
+        gaps = [float(r.get("gap") or 0) for r in trend]
+        inverted = len(trend) == CANARY_TREND_WEEKS and all(g < 0 for g in gaps)
+        alert_streak = len(trend) == CANARY_TREND_WEEKS and all((r.get("alerts") or "").strip() for r in trend)
+        facts["canary"]["inverted_weeks"] = sum(1 for g in gaps if g < 0)
+        if alert_streak:
+            conds.append(Condition("signal canary", FAIL, meas, thr,
+                                   f"ALERT {CANARY_TREND_WEEKS} weeks running - the Binance edge is fading, not spreading; "
+                                   f"GO_LIVE_CHECKLIST Part 6 says consider exit", terminal=True))
+        elif alerts:
             conds.append(Condition("signal canary", FAIL, meas, thr,
                                    "ALERT: " + "; ".join(f"{d}: {a}" for d, a in alerts)[:200],
                                    flip=f"{CANARY_LOOKBACK_ROWS} consecutive clear rows"))
             must.append("canary alerts must clear (edge fading / regime change)")
+        elif inverted:
+            conds.append(Condition("signal canary", FAIL, meas, thr,
+                                   f"Bybit-weight Sharpe above Binance-weight for {CANARY_TREND_WEEKS} consecutive weeks "
+                                   f"(gaps {', '.join(f'{g:+.2f}' for g in gaps)}); no capital until the gap is positive",
+                                   flip="a week with Binance above Bybit"))
+            must.append("canary gap must turn positive (Binance-weight Sharpe back above Bybit-weight)")
         elif age > CANARY_STALE_DAYS:
             conds.append(Condition("signal canary", NOT_YET, meas, thr, "STALE - weekly task not running?",
                                    flip="a fresh clear row"))

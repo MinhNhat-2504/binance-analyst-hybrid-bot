@@ -60,3 +60,6 @@ reports/live_filters_check.json
 *.docx
 status.txt
 scheduler_state.json
+
+# hand-written on the day; a git pull must never be able to arm unattended live trading
+unattended_live_v1.json

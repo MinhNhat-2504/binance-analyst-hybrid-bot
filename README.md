@@ -77,7 +77,7 @@ Thành phần:
 - `clean_research/`: pipeline OOS độc lập thứ hai, ledger một dòng mỗi quyết định. Tách để có một kết luận không dùng chung code với `honest/`.
 - `run_carry_paper.py`: executor paper. Tách vì config bị khóa hash và executor từ chối chạy nếu file config đổi; không có knob runtime.
 - `export_carry_targets.py`: tầng kiểm soát giữa nghiên cứu và thực thi. Tính lại weight ngày mới nhất, đối chiếu với state paper, từ chối nếu lệch quá 1e-6.
-- `run_carry_testnet_daily.py`: vòng lặp không người trực. Tách khỏi engine để engine không biết gì về lịch, lock file hay marker.
+- `run_carry_testnet_daily.py`: vòng lặp không người trực, thân chung cho testnet và live (`run_loop(LoopEnv)`); `run_carry_live_daily.py` chỉ thêm cổng ủy quyền. Tách khỏi engine để engine không biết gì về lịch, lock file hay marker.
 - `execution/engine.py`: đặt lệnh và xác minh. Chỉ biết một target file và một policy; mọi bất thường đều kết thúc bằng một status có tên và một dòng audit.
 - `execution/contracts.py`: trần vốn đóng băng bằng sha256 của file ceilings; live = 0.
 - `gate_report.py`, `status.py`, `reconcile_paper_vs_testnet.py`: chỉ đọc, không đụng sàn.
@@ -208,10 +208,10 @@ Hạn chế đọc từ code:
 2. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
 3. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
 4. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
-5. Không có unattended live runner. `run_live_execution.py` là CLI thủ công; tháng đầu live (nếu có) phải gõ tay mỗi sáng.
+5. Vòng live không người trực (`run_carry_live_daily.py`) đã viết và test bằng sàn giả, nhưng chưa từng chạy một ngày thật; tháng đầu live vẫn là chạy tay theo checklist, và file ủy quyền `unattended_live_v1.json` chỉ được viết sau đó.
 6. Order style `MAKER_THEN_MARKET` đã viết và test nhưng chưa từng chạy trên sàn; mặc định vẫn MARKET. Tổng thời gian chờ maker bị chặn ở nửa TTL kill-switch, chưa đo trên fill thật.
 7. Universe 42 symbol cố định từ tháng 8; MKRUSDT và TONUSDT đã SETTLING trên live, được zombie guard loại nhưng chưa có cơ chế thay symbol.
-8. Sáu symbol trả funding mỗi 4h (TIA, ENA, JTO, PYTH, TAO, ORDI) trong khi paper giả định 3 kỳ mỗi ngày. Là một nguồn lệch paper so với live đã biết, chưa đo.
+8. Sáu symbol trả funding mỗi 4h (TIA, ENA, JTO, PYTH, TAO, ORDI) chiếm 17.9% số chỗ trong rổ paper và gần như chỉ ở bên short (PYTH 33/52 ngày). Paper giả định 3 kỳ mỗi ngày; phần backtest loại chúng ra chạy 01/10 (`measure_funding_interval.py`).
 
 Việc làm tiếp, theo thứ tự:
 
@@ -234,7 +234,8 @@ run_carry_paper.py          executor paper, config khóa hash
 export_carry_targets.py     nghiên cứu -> target file, có cross-check
 run_carry_testnet_daily.py  vòng lặp không người trực (lock, self-release, DD guard, marker)
 run_testnet_execution.py    CLI testnet thủ công (--plan, --execute)
-run_live_execution.py       CLI live, trơ khi ceilings live = 0
+run_live_execution.py       CLI live thủ công, trơ khi ceilings live = 0
+run_carry_live_daily.py     vòng live không người trực; cần ceilings v2 + unattended_live_v1.json + sha khớp
 gate_report.py              chấm 13 điều kiện cổng ngày 60/90
 status.py                   6 dòng tình trạng; ghi ra Desktop mỗi sáng
 check_live_filters.py       sàn thật nhận rổ ở vốn tối thiểu bao nhiêu (không cần key)

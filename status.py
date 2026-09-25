@@ -65,6 +65,18 @@ def _testnet():
     return line
 
 
+def _live():
+    p = ROOT / "carry_live_log.csv"
+    if not p.exists():
+        return None
+    rows = list(csv.DictReader(p.open(encoding="utf-8")))
+    if not rows:
+        return None
+    r = rows[-1]
+    n_complete = sum(1 for x in rows if x.get("status") == "COMPLETE")
+    return f"  LIVE    {n_complete} COMPLETE  last {r['utc'][:10]} {r['status']}  {r.get('detail', '')[:60]}"
+
+
 def _markers():
     ex = ROOT / ".execution"
     found = [p.name for p in ex.glob("*") if p.name in ("ATTENTION", "canary_ALERT", "testnet_daily.lock")]
@@ -100,9 +112,12 @@ def _fills():
 def main() -> int:
     now = datetime.now(timezone.utc)
     print(f"CARRY-7d status  {now:%Y-%m-%d %H:%M} UTC  ({now.astimezone():%H:%M} local)")
-    for fn in (_paper, _testnet, _markers, _canary, _fills):
+    for fn in (_paper, _testnet, _live, _markers, _canary, _fills):
         try:
-            print(fn())
+            line = fn()
+            if line is None:
+                continue
+            print(line)
         except Exception as exc:  # noqa: BLE001 - a status screen must never crash
             print(f"  {fn.__name__[1:]}: (could not read: {type(exc).__name__}: {exc})")
     print("  next: paper 07:05, testnet 07:20 daily; canary Sun 08:00 - machine must be awake.")

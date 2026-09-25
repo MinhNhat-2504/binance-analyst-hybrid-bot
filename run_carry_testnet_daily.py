@@ -56,14 +56,15 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from dataclasses import dataclass
+from typing import Any, Callable, Sequence
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from execution.binance_futures import FuturesREST  # noqa: E402
 from execution.contracts import FROZEN_TESTNET_GROSS_CEILING_USD, frozen_ceiling, load_ceilings  # noqa: E402
-from execution.engine import ExecutionAudit, ExecutionPolicy, KillSwitch, TestnetExecutor  # noqa: E402
+from execution.engine import ExecutionAudit, ExecutionPolicy, KillSwitch, PortfolioExecutor, TestnetExecutor  # noqa: E402
 from execution.targets import load_target_book, sha256_file  # noqa: E402
 
 PYTHON = sys.executable
@@ -84,6 +85,42 @@ HWM_HISTORY_ROWS = 120
 EXIT_DD_GUARD_HALT = 8
 
 
+@dataclass(frozen=True)
+class LoopEnv:
+    """Everything that differs between the testnet loop and a live loop. Nothing else does.
+
+    The loop body (_run) is written once. run_carry_live_daily.py builds a LoopEnv with
+    its own kill switch, audit DB, lock, log and - the part that matters - its own
+    refusal gate and executor class. Testnet keeps its module-level paths so the existing
+    tests, which monkeypatch those names, keep describing the testnet loop exactly.
+    """
+    environment: str
+    targets: Path
+    kill: Path
+    audit: Path
+    attention: Path
+    log: Path
+    lock: Path
+    incidents: Path
+    budget_usd: float
+    executor_factory: Callable[..., PortfolioExecutor]
+    refuse: Callable[[], None]
+    release_reason: str
+    # Budget the DD guard measures against. None = frozen_ceiling(environment) read at run
+    # time (testnet: the frozen file). Live passes its authorized budget, which may be
+    # lower than the ceiling - the guard must protect the money actually at risk.
+    guard_budget_usd: float | None = None
+
+
+def _testnet_env() -> "LoopEnv":
+    return LoopEnv(
+        environment=ENVIRONMENT, targets=TARGETS, kill=KILL, audit=AUDIT, attention=ATTENTION,
+        log=LOG, lock=LOCK, incidents=INCIDENTS, budget_usd=FROZEN_TESTNET_GROSS_CEILING_USD,
+        executor_factory=TestnetExecutor, refuse=_refuse_unless_testnet_only,
+        release_reason="unattended testnet rehearsal",
+    )
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -91,9 +128,9 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 # Equity drawdown guard
 # ---------------------------------------------------------------------------
-def _hwm_path(environment: str) -> Path:
+def _hwm_path(environment: str, kill_path: Path | None = None) -> Path:
     """The mark lives beside the kill switch it pulls, so the two always travel together."""
-    return KILL.parent / f"equity_hwm_{environment}.json"
+    return (kill_path or KILL).parent / f"equity_hwm_{environment}.json"
 
 
 def _equity(client: Any) -> float:
@@ -112,7 +149,8 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def _update_hwm(client: Any, environment: str, *, reset: bool = False) -> dict[str, Any]:
+def _update_hwm(client: Any, environment: str, *, reset: bool = False,
+                kill_path: Path | None = None, budget_usd: float | None = None) -> dict[str, Any]:
     """Read equity, ratchet the high-water mark, persist, then judge.
 
     Persisting happens before the budget lookup and before any verdict, so the history
@@ -120,7 +158,7 @@ def _update_hwm(client: Any, environment: str, *, reset: bool = False) -> dict[s
     malformed mark file raises (-> PLAN_REFUSED) rather than silently starting over,
     because a silently reset mark would hide exactly the loss this guard exists to catch.
     """
-    path = _hwm_path(environment)
+    path = _hwm_path(environment, kill_path)
     equity = _equity(client)
     now = _now()
     prior: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -134,7 +172,7 @@ def _update_hwm(client: Any, environment: str, *, reset: bool = False) -> dict[s
              "history": history[-HWM_HISTORY_ROWS:]}
     _write_json_atomic(path, state)
 
-    budget_usd = float(frozen_ceiling(environment))
+    budget_usd = float(frozen_ceiling(environment) if budget_usd is None else budget_usd)
     loss_usd = hwm - equity
     max_loss_usd = MAX_LOSS_FRACTION_OF_BUDGET * budget_usd
     return {**state, "budget_usd": budget_usd, "loss_usd": loss_usd, "max_loss_usd": max_loss_usd,
@@ -147,31 +185,34 @@ def _dd_guard_reason(guard: dict[str, Any], environment: str) -> str:
             f"= {MAX_LOSS_FRACTION_OF_BUDGET:.0%} of {environment} budget {guard['budget_usd']:.2f} USD")
 
 
-def _reset_equity_hwm() -> int:
+def _reset_equity_hwm(env: "LoopEnv | None" = None) -> int:
     """Operator re-base after review (demo balance reset, deliberate re-start). No orders."""
-    client = FuturesREST.from_env(ENVIRONMENT, required=True)
-    state = _update_hwm(client, ENVIRONMENT, reset=True)
-    print(f"equity high-water mark for {ENVIRONMENT} reset to {state['hwm']:.2f} USD at {state['hwm_utc']} "
-          f"-> {_hwm_path(ENVIRONMENT)} (no orders placed)")
+    env = env or _testnet_env()
+    client = FuturesREST.from_env(env.environment, required=True)
+    state = _update_hwm(client, env.environment, reset=True, kill_path=env.kill, budget_usd=env.guard_budget_usd)
+    print(f"equity high-water mark for {env.environment} reset to {state['hwm']:.2f} USD at {state['hwm_utc']} "
+          f"-> {_hwm_path(env.environment, env.kill)} (no orders placed)")
     return 0
 
 
 LOG_COLUMNS = ("utc", "target_id", "status", "reconcile_exit", "plan_legs", "plan_skips", "detail")
 
 
-def _log(row: dict) -> None:
-    new = not LOG.exists()
-    with LOG.open("a", newline="", encoding="utf-8") as fh:
+def _log(row: dict, env: "LoopEnv | None" = None) -> None:
+    log = (env or _testnet_env()).log
+    new = not log.exists()
+    with log.open("a", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=LOG_COLUMNS, extrasaction="ignore")
         if new:
             w.writeheader()
         w.writerow({c: row.get(c, "") for c in LOG_COLUMNS})
 
 
-def _attention(reason: str, detail: dict) -> None:
-    ATTENTION.parent.mkdir(parents=True, exist_ok=True)
-    ATTENTION.write_text(json.dumps({"utc": _now(), "reason": reason, **detail}, indent=2, default=str), encoding="utf-8")
-    with INCIDENTS.open("a", encoding="utf-8") as fh:
+def _attention(reason: str, detail: dict, env: "LoopEnv | None" = None) -> None:
+    env = env or _testnet_env()
+    env.attention.parent.mkdir(parents=True, exist_ok=True)
+    env.attention.write_text(json.dumps({"utc": _now(), "reason": reason, **detail}, indent=2, default=str), encoding="utf-8")
+    with env.incidents.open("a", encoding="utf-8") as fh:
         fh.write(f"\n## {_now()} — {reason}\n\n```\n{json.dumps(detail, indent=2, default=str)}\n```\n\n"
                  f"_Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa `.execution/ATTENTION`._\n")
 
@@ -196,21 +237,22 @@ def _refuse_unless_testnet_only() -> None:
 LOCK = ROOT / ".execution" / "testnet_daily.lock"
 
 
-def _acquire_lock():
+def _acquire_lock(env: "LoopEnv | None" = None):
     """Exclusive create; a second concurrent fire must not double-execute the same book.
 
     O_EXCL is atomic on NTFS/POSIX. A stale lock (previous process killed) is left for a
     human: it is written with the pid + start time and shows up as an ATTENTION so nothing
     piles a new run onto an unknown state.
     """
-    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    lock = (env or _testnet_env()).lock
+    lock.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
         return None
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(json.dumps({"pid": os.getpid(), "started_utc": _now()}))
-    return LOCK
+    return lock
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -224,86 +266,94 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
 def main(argv: Sequence[str] = ()) -> int:
     """No-arg call is the scheduled path. argv is explicit so the scheduled task, tests and
     the operator's --reset-equity-hwm all go through the same crash guard."""
+    return run_loop(_testnet_env(), argv)
+
+
+def run_loop(env: "LoopEnv", argv: Sequence[str] = ()) -> int:
+    """The whole unattended day for one environment. Shared by the testnet and live loops."""
     args = _parse_args(argv)
     try:
         if args.reset_equity_hwm:
-            return _reset_equity_hwm()
-        return _main()
+            return _reset_equity_hwm(env)
+        return _main(env)
     except SystemExit:
         raise
     except BaseException as exc:   # noqa: BLE001 - last line of defence; must never be silent
         try:
-            _attention("unexpected_crash", {"error": f"{type(exc).__name__}: {exc}"})
+            _attention("unexpected_crash", {"error": f"{type(exc).__name__}: {exc}"}, env)
         except BaseException:
             pass
         raise
 
 
-def _main() -> int:
-    _refuse_unless_testnet_only()
-    lock = _acquire_lock()
+def _main(env: "LoopEnv | None" = None) -> int:
+    env = env or _testnet_env()
+    env.refuse()
+    lock = _acquire_lock(env)
     if lock is None:
         _attention("concurrent_or_stale_lock", {
-            "lock": str(LOCK),
+            "lock": str(env.lock),
             "note": "another run is in progress, or a previous run died without releasing. "
                     "Check Task Scheduler / process list; if none is running, inspect the exchange, "
                     "then delete the lock AND the ATTENTION marker.",
-        })
+        }, env)
         return 7
     try:
-        return _run()
+        return _run(env)
     finally:
         try:
-            LOCK.unlink()
+            env.lock.unlink()
         except FileNotFoundError:
             pass
 
 
-def _plan_refused(started: str, book: Any, exc: BaseException) -> int:
+def _plan_refused(started: str, book: Any, exc: BaseException, env: "LoopEnv | None" = None) -> int:
     """Any refusal before the kill switch is released: nothing placed, marker + log row."""
-    _attention("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"})
-    _log({"utc": started, "target_id": book.target_id, "status": "PLAN_REFUSED", "detail": str(exc)[:200]})
+    _attention("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"}, env)
+    _log({"utc": started, "target_id": book.target_id, "status": "PLAN_REFUSED", "detail": str(exc)[:200]}, env)
     return 5
 
 
-def _run() -> int:
+def _run(env: "LoopEnv | None" = None) -> int:
+    env = env or _testnet_env()
     started = _now()
 
     # 1. Fresh targets from today's paper state (deterministic; safe to re-run).
     exp = subprocess.run([PYTHON, "-B", str(ROOT / "export_carry_targets.py")], capture_output=True, text=True, cwd=ROOT, timeout=900)
     if exp.returncode != 0:
-        _attention("export_targets_failed", {"stdout": exp.stdout[-2000:], "stderr": exp.stderr[-2000:]})
+        _attention("export_targets_failed", {"stdout": exp.stdout[-2000:], "stderr": exp.stderr[-2000:]}, env)
         return 4
-    book = load_target_book(TARGETS)
+    book = load_target_book(env.targets)
 
-    client = FuturesREST.from_env(ENVIRONMENT, required=True)   # refuses anything but testnet creds
+    client = FuturesREST.from_env(env.environment, required=True)   # credentials named per environment
     policy = ExecutionPolicy(
-        max_gross_notional_usd=FROZEN_TESTNET_GROSS_CEILING_USD,
+        environment=env.environment,
+        max_gross_notional_usd=env.budget_usd,
         expected_config_sha256=sha256_file(PAPER_CONFIG),
     )
-    kill = KillSwitch(KILL)
-    audit = ExecutionAudit(AUDIT)
-    executor = TestnetExecutor(client, policy, kill, audit)   # refuses non-testnet client/policy
+    kill = KillSwitch(env.kill, environment=env.environment)
+    audit = ExecutionAudit(env.audit)
+    executor = env.executor_factory(client, policy, kill, audit)   # refuses a mismatched client/policy
 
     # 2. Equity drawdown guard - the checklist stop rule, enforced before anything can be
     #    placed. The mark file is persisted whether or not it halts. An account read that
     #    fails is a pre-plan refusal like any other (marker + PLAN_REFUSED row, exit 5).
     try:
-        guard = _update_hwm(client, ENVIRONMENT)
+        guard = _update_hwm(client, env.environment, kill_path=env.kill, budget_usd=env.guard_budget_usd)
     except Exception as exc:
-        return _plan_refused(started, book, exc)
+        return _plan_refused(started, book, exc, env)
     if guard["halt"]:
-        reason = _dd_guard_reason(guard, ENVIRONMENT)
+        reason = _dd_guard_reason(guard, env.environment)
         kill.engage(reason)
         _attention("dd_guard", {
-            "target_id": book.target_id, "environment": ENVIRONMENT, "message": reason,
+            "target_id": book.target_id, "environment": env.environment, "message": reason,
             "equity_usd": guard["last_equity"], "hwm_usd": guard["hwm"], "hwm_utc": guard["hwm_utc"],
             "loss_usd": guard["loss_usd"], "max_loss_usd": guard["max_loss_usd"], "budget_usd": guard["budget_usd"],
-            "hwm_file": str(_hwm_path(ENVIRONMENT)),
+            "hwm_file": str(_hwm_path(env.environment, env.kill)),
             "note": "no orders were placed. Review per EXECUTION_RUNBOOK.md; after a deliberate "
                     "re-start run --reset-equity-hwm, then delete the ATTENTION marker.",
-        })
-        _log({"utc": started, "target_id": book.target_id, "status": "DD_GUARD_HALT", "detail": reason[:200]})
+        }, env)
+        _log({"utc": started, "target_id": book.target_id, "status": "DD_GUARD_HALT", "detail": reason[:200]}, env)
         print(f"DD_GUARD_HALT (no orders, kill switch engaged): {reason}")
         return EXIT_DD_GUARD_HALT
 
@@ -317,15 +367,15 @@ def _run() -> int:
             # Ran too long after the daily close (machine woke late, or a manual run at
             # noon). Nothing was placed and nothing needs a human: log it and let
             # tomorrow's run proceed. Missed days are surfaced by status.py instead.
-            _log({"utc": started, "target_id": book.target_id, "status": "MISSED_WINDOW", "detail": str(exc)[:200]})
+            _log({"utc": started, "target_id": book.target_id, "status": "MISSED_WINDOW", "detail": str(exc)[:200]}, env)
             print(f"missed window (no orders, no marker): {exc}")
             return 5
-        return _plan_refused(started, book, exc)
+        return _plan_refused(started, book, exc, env)
 
     # 4. Release for exactly this target and budget, execute, and re-engage no matter what.
     status, detail = "UNKNOWN", ""
-    kill.release(f"unattended testnet rehearsal {started}", target_id=book.target_id,
-                 authorized_budget_usd=FROZEN_TESTNET_GROSS_CEILING_USD)
+    kill.release(f"{env.release_reason} {started}", target_id=book.target_id,
+                 authorized_budget_usd=env.budget_usd)
     try:
         result = executor.execute(book, dry_run=False)
         status, detail = str(result.get("status", "UNKNOWN")), f"{result.get('legs')} legs"
@@ -340,22 +390,22 @@ def _run() -> int:
         try:
             kill.engage(f"unattended run finished {status} at {_now()}")
         except Exception as exc:   # engine's own _safe_engage already tried; this is belt-and-braces
-            _attention("kill_switch_reengage_failed", {"error": str(exc), "status": status})
+            _attention("kill_switch_reengage_failed", {"error": str(exc), "status": status}, env)
 
     # 5. Reconcile. Exit 0 = matches contract; 2 = mismatch; 3 = hand-off state exists.
     rec = subprocess.run([PYTHON, "-B", str(ROOT / "reconcile_paper_vs_testnet.py"),
-                          "--targets", str(TARGETS), "--audit", str(AUDIT)],
+                          "--targets", str(env.targets), "--audit", str(env.audit)],
                          capture_output=True, text=True, cwd=ROOT, timeout=300)
     _log({"utc": started, "target_id": book.target_id, "status": status,
           "reconcile_exit": rec.returncode, "detail": detail,
-          "plan_legs": len(plan.get("legs", [])), "plan_skips": len(plan.get("skips", []))})
+          "plan_legs": len(plan.get("legs", [])), "plan_skips": len(plan.get("skips", []))}, env)
 
     if status == "COMPLETE" and rec.returncode == 0:
         return 0
     _attention("run_needs_review", {
         "target_id": book.target_id, "engine_status": status, "engine_detail": detail,
         "reconcile_exit": rec.returncode, "reconcile_tail": rec.stdout[-3000:],
-    })
+    }, env)
     return 6
 
 

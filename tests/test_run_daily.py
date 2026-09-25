@@ -32,7 +32,7 @@ def test_chain_continues_after_a_failing_step_and_reports_first_error(repo, monk
     monkeypatch.setattr(rd, "run_step", fake_step)
     monkeypatch.setattr(rd, "write_status", lambda *, root: (calls.append("status"), 0)[1])
     rc = rd.run_stage("testnet", root=repo)
-    assert calls == ["testnet", "status", "notify"], "a MISSED_WINDOW must not stop status/notify"
+    assert calls == ["testnet", "live", "status", "notify"], "a MISSED_WINDOW must not stop the live loop, status or notify"
     assert rc == 5
 
 
