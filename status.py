@@ -70,7 +70,9 @@ def _markers():
     found = [p.name for p in ex.glob("*") if p.name in ("ATTENTION", "canary_ALERT", "testnet_daily.lock")]
     if not found:
         return "  markers none - next scheduled run will proceed"
-    return "  MARKERS PRESENT -> " + ", ".join(found) + "   (runs are blocked until resolved; see EXECUTION_RUNBOOK.md)"
+    blocking = [f for f in found if f != "canary_ALERT"]
+    note = "runs BLOCKED until resolved" if blocking else "informational - runs continue"
+    return "  MARKERS PRESENT -> " + ", ".join(found) + f"   ({note}; see EXECUTION_RUNBOOK.md)"
 
 
 def _canary():

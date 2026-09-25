@@ -28,6 +28,13 @@ DEMO_TESTNET_BASE_URL = "https://demo-fapi.binance.com"   # selected via BINANCE
 LIVE_BASE_URL = "https://fapi.binance.com"
 PAPER_BASE_URLS = (TESTNET_BASE_URL, DEMO_TESTNET_BASE_URL)
 
+# Transient-failure policy. Only methods that can be re-sent without changing exchange
+# state are retried; POST /order is never retried here (the engine looks it up instead).
+IDEMPOTENT_METHODS = frozenset({"GET", "DELETE", "PUT"})
+IDEMPOTENT_RETRIES = 3
+RETRY_BACKOFF_SECONDS = 0.5
+TIMESTAMP_OUT_OF_WINDOW = -1021       # Binance: timestamp outside recvWindow -> resync clock, resend
+
 
 # Optional file-based credentials for people who cannot / do not want to set Windows
 # environment variables. Read ONLY these three names, ONLY from <repo>/.env.testnet, and
@@ -121,34 +128,71 @@ class FuturesREST:
             raise BinanceAPIError("signed request requires credentials")
         payload = dict(params or {})
         payload.setdefault("recvWindow", 5_000)
-        payload["timestamp"] = int(time.time() * 1000) + self.time_offset_ms
+        # timestamp is stamped per attempt inside _request, so a retry is never stale.
         return self._request(method, path, payload, signed=True)
 
     def _request(self, method: str, path: str, params: dict[str, Any], *, signed: bool) -> Any:
-        query = dict(params)
-        headers: dict[str, str] = {}
-        if signed:
-            assert self.credentials is not None
-            encoded = urlencode(query, doseq=True)
-            query["signature"] = hmac.new(
-                self.credentials.api_secret.encode("utf-8"), encoded.encode("utf-8"), hashlib.sha256
-            ).hexdigest()
-            headers["X-MBX-APIKEY"] = self.credentials.api_key
-        try:
-            response = self.session.request(
-                method.upper(), self._url(path), params=query, headers=headers, timeout=self.timeout_seconds
-            )
-        except requests.RequestException as exc:
-            raise BinanceAPIError(f"network failure calling {path}: {exc}") from exc
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = {"raw": response.text[:500]}
-        if response.status_code >= 400 or (isinstance(payload, dict) and "code" in payload and int(payload["code"]) < 0):
-            raise BinanceAPIError(
-                f"Binance {path} failed: {payload}", status_code=response.status_code, payload=payload
-            )
-        return payload
+        # Retries are for IDEMPOTENT calls only. A GET or DELETE that died on the wire can be
+        # re-sent without changing what happens on the exchange; a POST /order cannot - a
+        # duplicate would open a second position - so the engine handles that case itself by
+        # looking the order up by client id. 2026-09-05: one SSL EOF while polling an order
+        # cascaded into cancel failures, a clock error and a whole-book flatten. Each of those
+        # calls was a GET or DELETE that would have succeeded a second later.
+        method = method.upper()
+        attempts = IDEMPOTENT_RETRIES if method in IDEMPOTENT_METHODS else 1
+        resynced = False
+        last: Exception | None = None
+        attempt = 0
+        while attempt < attempts:
+            attempt += 1
+            query = dict(params)
+            headers: dict[str, str] = {}
+            if signed:
+                assert self.credentials is not None
+                # Stamp inside the loop so a retry never re-sends a stale timestamp.
+                query["timestamp"] = int(time.time() * 1000) + self.time_offset_ms
+                encoded = urlencode(query, doseq=True)
+                query["signature"] = hmac.new(
+                    self.credentials.api_secret.encode("utf-8"), encoded.encode("utf-8"), hashlib.sha256
+                ).hexdigest()
+                headers["X-MBX-APIKEY"] = self.credentials.api_key
+            try:
+                response = self.session.request(
+                    method, self._url(path), params=query, headers=headers, timeout=self.timeout_seconds
+                )
+            except requests.RequestException as exc:
+                last = BinanceAPIError(f"network failure calling {path}: {exc}")
+                last.__cause__ = exc
+                if attempt < attempts:
+                    time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                    continue
+                raise last
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {"raw": response.text[:500]}
+            code = int(payload["code"]) if isinstance(payload, dict) and "code" in payload else 0
+            if code == TIMESTAMP_OUT_OF_WINDOW and signed and not resynced:
+                # The machine clock drifted (or the wire stalled longer than recvWindow).
+                # Re-read the server clock once and send again - any call, idempotent or
+                # not, because a request the exchange refused for its timestamp never ran.
+                resynced = True
+                try:
+                    self.sync_time()
+                except BinanceAPIError:
+                    pass
+                attempts = max(attempts, attempt + 1)
+                continue
+            transient = response.status_code >= 500 or response.status_code == 429
+            if transient and method in IDEMPOTENT_METHODS and attempt < attempts:
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            if response.status_code >= 400 or code < 0:
+                raise BinanceAPIError(
+                    f"Binance {path} failed: {payload}", status_code=response.status_code, payload=payload
+                )
+            return payload
+        raise last if last else BinanceAPIError(f"{path}: retries exhausted")
 
     # Public endpoints
     def exchange_info(self) -> dict[str, Any]:

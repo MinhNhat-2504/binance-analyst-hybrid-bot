@@ -66,7 +66,7 @@ python run_honest_harness.py --quick   # đo lại tín hiệu 15m cũ (spoiler:
 python run_daily_lab.py                # lab chiến lược khung ngày, mỗi cell so với null riêng
 python run_carry_holdout.py            # kiểm carry trên universe tách biệt
 python run_carry_paper.py              # book paper hằng ngày, quên vài hôm nó tự bù
-pytest                                 # 164 test
+pytest                                 # 189 test
 ```
 
 Vận hành hằng ngày thì không phải gõ gì, ba task Windows do `INSTALL_TASKS.bat` cài lo phần đó. Khi cần nhìn:

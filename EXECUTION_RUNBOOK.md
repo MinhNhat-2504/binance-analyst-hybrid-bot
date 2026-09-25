@@ -18,6 +18,10 @@ Nguyên tắc duy nhất cần nhớ: engine chỉ tự thanh lý (flatten) khi 
 
 Nó **tự tắt** ngày `execution_ceilings` khai live > 0 — không cần nhớ tắt khi lên live.
 
+**Mạng chập chờn không còn giết một ngày.** Client tự thử lại 3 lần (backoff 0.5s/1s/1.5s) cho mọi lệnh đọc và hủy — GET, DELETE — và tự đồng bộ giờ với sàn rồi gửi lại khi gặp lỗi −1021. Lệnh POST đặt lệnh **không bao giờ** được gửi lại mù: nếu POST chết trên đường thì engine tra bằng client-order-id; nếu tra cũng không được thì halt. Sự cố 05/09 (một SSL EOF → thanh lý cả rổ) là lý do có đoạn này.
+
+**Có marker là có file trên Desktop.** `notify_markers.py` chạy sau task paper mỗi sáng: `.execution/ATTENTION` hoặc lock tồn tại → xuất hiện `BINANCE BOT - CAN XEM.txt` ngoài Desktop, xử lý xong marker thì file tự mất. `canary_ALERT` chỉ mang tính thông tin (không chặn run) và phản ánh tuần mới nhất.
+
 **Máy phải thức lúc 07:20.** Testnet cố ý KHÔNG bù ngày thiếu (fill phải gần 00:20 UTC). Máy tắt/ngủ = ngày đó không có run, không có lỗi, không có marker — chỉ `python status.py` mới cho thấy "missed". Cần ≥20 COMPLETE trước ngày 60, nên uptime sáng ~70% là bắt buộc. Run muộn quá 6h sẽ tự ghi `MISSED_WINDOW` (không marker, không chặn ngày sau).
 
 Ba tầng để máy tự dậy và task không bị giết (bài học 31/08–03/09, xem `carry_paper_incidents.md`):
@@ -62,14 +66,14 @@ Kill-switch tự **bật lại** sau mỗi run thành công. Release hết hạn
 | `DD_GUARD_HALT` (chỉ ở log tự động) | không đổi (0 lệnh) | Equity (`totalMarginBalance`) tụt ≥20% **ngân sách đóng băng** so với đỉnh (testnet: $2000 → ngưỡng $400). Đây là bản tự động của quy tắc "DD −20%" trong GO_LIVE_CHECKLIST. Kill-switch đã bật, có ATTENTION, exit 8 | Xem mục "Sau `DD_GUARD_HALT`" |
 | `PLAN_REFUSED` (chỉ ở log tự động) | không đổi | Bước plan từ chối trước khi mở khóa — thường gặp nhất là **target quá 6h** (chạy tay lúc chiều/tối, hoặc máy tắt qua giờ 07:20). Không có gì trên sàn | Nếu do chạy tay: bỏ qua, sáng mai task tự chạy đúng giờ. Nếu task tự động vẫn báo: kiểm `export_carry_targets.py` có ra ngày signal hôm qua không |
 | `RUNNING` (không đổi sau nhiều phút) | **không rõ** | Process chết giữa chừng (mất điện, taskkill). Reconciler coi đây là exposure | Vào sàn xem thật; xử lý như `HALTED_MID_BOOK` |
-| **`HALTED_MID_BOOK`** | **một phần book, lệch** | Đang đặt lệnh thì: kill-switch hết hạn / bị bật tay, market data mất trước POST, lệnh chờ lạ xuất hiện, slippage vượt ngưỡng, hoặc không ghi được kill-switch sau khi verify | **Xem mục "Được giao book lệch"** |
+| **`HALTED_MID_BOOK`** | **một phần book, lệch** | Đang đặt lệnh thì: kill-switch hết hạn / bị bật tay, market data mất trước POST, lệnh chờ lạ xuất hiện, slippage vượt ngưỡng, không ghi được kill-switch sau khi verify, hoặc **lệnh đã đặt nhưng không đọc được trạng thái** (mất mạng sau POST — từ 25/09 đây là halt, không còn là flatten) | **Xem mục "Được giao book lệch"** |
 | `HALTED_AUDIT_UNAVAILABLE` | như trên | Như trên nhưng do sqlite từ chối ghi giữa chừng. Nếu DB hồi lại kịp lúc ghi kết thúc thì row status có trong DB; nếu không, terminal state + book đang giữ nằm trong `.execution/testnet_execution.sqlite3.sidecar.jsonl` (dòng cuối). Reconciler tự báo file này nếu tồn tại | Đọc DB **rồi** sidecar → mục "Được giao book lệch" |
 | `EXTERNAL_DRIFT_CANCEL_FAILED` | book mình đúng, dust bị ADL, **và có thể còn lệnh chờ** | Như `EXTERNAL_POSITION_DRIFT` nhưng cancel lệnh chờ thất bại | Vào sàn **hủy lệnh chờ tay**; sau đó thường không cần gì thêm |
 | `HALTED_CANCEL_FAILED` | lệch **và có thể còn lệnh chờ** | Halt, và cancel lệnh chờ cũng thất bại | Vào sàn **hủy lệnh chờ bằng tay trước**, rồi mục "Được giao book lệch" |
 | `EXTERNAL_POSITION_DRIFT` | book của mình đúng, một symbol dust bị ADL/liquidation ngoài | Không phải lỗi mình; engine chỉ cancel lệnh chờ | Xem symbol drift trong audit; thường không cần làm gì; ghi chú |
 | `VERIFICATION_UNAVAILABLE` | có thể đúng, **chưa verify được** | Quote timeout / quote = 0 sau khi fill xong | Chạy reconcile với `--run-id`; nếu chưa có `after_orders` thì **so tay** với `execution_contract` trong audit |
 | **`MISMATCH`** | **đã flatten** (nếu flatten thành công) | Vị thế thật sự sai contract → engine đã thanh lý | Xem `target_verification` để biết symbol nào sai; điều tra fill; **không** chạy lại cho tới khi hiểu |
-| **`UNRESOLVED_EXPOSURE`** | **lệch, flatten thất bại** | Muốn thanh lý mà sàn không cho (reject/lỗi) | **Khẩn**: vào sàn đóng tay theo `emergency_flatten_unresolved` snapshot |
+| **`UNRESOLVED_EXPOSURE`** | **lệch, flatten thất bại** | Muốn thanh lý mà sàn không cho (reject/lỗi) | **Khẩn**: vào sàn đóng tay theo `emergency_flatten_unresolved` snapshot. Đọc snapshot trước khi hoảng: 05/09 tài khoản đã phẳng (`positions 0, open_orders 0`) mà vẫn mang status này — lỗi đó đã sửa, nhưng nếu snapshot phẳng thì việc cần làm chỉ là ghi incident và xóa marker |
 | `INTERRUPTED` | tùy thời điểm | Ctrl+C. Trước khi có lệnh → không đổi. Sau khi có lệnh → engine đã cố flatten (xem snapshot `emergency_flatten_*`) | Như `FAILED`: xem `orders_started` + snapshot flatten để biết sàn có flat không |
 
 ## Được giao book lệch (`HALTED_*`)

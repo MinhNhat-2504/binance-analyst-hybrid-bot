@@ -627,7 +627,19 @@ class PortfolioExecutor:
             order_id = int(response["orderId"])
             for _ in range(self.policy.order_poll_attempts):
                 time.sleep(self.policy.poll_seconds)
-                response = self.client.get_order(leg.symbol, order_id)
+                try:
+                    response = self.client.get_order(leg.symbol, order_id)
+                except BinanceAPIError as exc:
+                    if force_market:
+                        raise
+                    # The order EXISTS (the POST was acknowledged with an id); only its
+                    # fill state is unknown because the read failed. Unknown is not
+                    # wrong: this is the cancel-only hand-off, never a flatten.
+                    # 2026-09-05 one SSL EOF here liquidated a correct 8-name book.
+                    raise HaltedError(
+                        f"{leg.symbol} {leg.reason}: order {order_id} placed but its status could not be "
+                        f"read ({exc}); book kept, cancel-only"
+                    ) from exc
                 if str(response.get("status", "UNKNOWN")) in {"FILLED", "CANCELED", "REJECTED", "EXPIRED"}:
                     break
         return response, client_order_id
@@ -1091,11 +1103,18 @@ class PortfolioExecutor:
         try:
             remaining = [row for row in self.client.positions() if _decimal(row.get("positionAmt", 0)) != 0]
             pending = self.client.open_orders()
-            self.audit.positions(run_id, "emergency_flatten_unresolved", {
-                "positions": remaining, "open_orders": pending,
-            })
         except BaseException as exc:
             self.audit.positions(run_id, "emergency_flatten_verify_failed", {"error": str(exc)})
+            return False
+        if not remaining and not pending:
+            # The closes sent on the LAST attempt filled; the loop just had no further pass
+            # in which to notice. This read is the same evidence the in-loop check trusts.
+            # 2026-09-05: a fully flat account was reported UNRESOLVED_EXPOSURE for this.
+            self.audit.positions(run_id, "emergency_flatten_verified", {"positions": [], "open_orders": []})
+            return True
+        self.audit.positions(run_id, "emergency_flatten_unresolved", {
+            "positions": remaining, "open_orders": pending,
+        })
         return False
 
     def execute(self, book: TargetBook, *, dry_run: bool) -> dict[str, Any]:
