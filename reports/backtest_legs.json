@@ -1,0 +1,226 @@
+{
+  "discovery": {
+    "full": {
+      "long": {
+        "ann_pct": -7.19,
+        "sharpe": -0.19,
+        "n_days": 592
+      },
+      "short": {
+        "ann_pct": 40.03,
+        "sharpe": 0.99,
+        "n_days": 592
+      },
+      "total": {
+        "ann_pct": 32.85,
+        "sharpe": 1.78,
+        "n_days": 592
+      },
+      "long_price_ann_pct": -9.14,
+      "long_funding_ann_pct": 6.09,
+      "short_price_ann_pct": 44.12,
+      "short_funding_ann_pct": 2.5,
+      "short_share_of_total_pct": 121.9
+    },
+    "h1": {
+      "long": {
+        "ann_pct": -2.2,
+        "sharpe": -0.06,
+        "n_days": 297
+      },
+      "short": {
+        "ann_pct": 31.54,
+        "sharpe": 0.75,
+        "n_days": 297
+      },
+      "total": {
+        "ann_pct": 29.34,
+        "sharpe": 1.69,
+        "n_days": 297
+      },
+      "long_price_ann_pct": -1.26,
+      "long_funding_ann_pct": 3.37,
+      "short_price_ann_pct": 35.45,
+      "short_funding_ann_pct": 3.27,
+      "short_share_of_total_pct": 107.5
+    },
+    "h2": {
+      "long": {
+        "ann_pct": -14.09,
+        "sharpe": -0.37,
+        "n_days": 296
+      },
+      "short": {
+        "ann_pct": 49.12,
+        "sharpe": 1.28,
+        "n_days": 296
+      },
+      "total": {
+        "ann_pct": 35.03,
+        "sharpe": 1.8,
+        "n_days": 296
+      },
+      "long_price_ann_pct": -18.92,
+      "long_funding_ann_pct": 8.8,
+      "short_price_ann_pct": 53.39,
+      "short_funding_ann_pct": 1.74,
+      "short_share_of_total_pct": 140.2
+    },
+    "pre_cutoff": {
+      "long": {
+        "ann_pct": -23.32,
+        "sharpe": -0.59,
+        "n_days": 473
+      },
+      "short": {
+        "ann_pct": 59.29,
+        "sharpe": 1.42,
+        "n_days": 473
+      },
+      "total": {
+        "ann_pct": 35.97,
+        "sharpe": 2.04,
+        "n_days": 473
+      },
+      "long_price_ann_pct": -25.43,
+      "long_funding_ann_pct": 6.24,
+      "short_price_ann_pct": 63.59,
+      "short_funding_ann_pct": 2.54,
+      "short_share_of_total_pct": 164.8
+    },
+    "post_cutoff": {
+      "long": {
+        "ann_pct": 59.06,
+        "sharpe": 2.01,
+        "n_days": 120
+      },
+      "short": {
+        "ann_pct": -38.65,
+        "sharpe": -1.14,
+        "n_days": 120
+      },
+      "total": {
+        "ann_pct": 20.41,
+        "sharpe": 0.96,
+        "n_days": 120
+      },
+      "long_price_ann_pct": 57.72,
+      "long_funding_ann_pct": 5.48,
+      "short_price_ann_pct": -35.39,
+      "short_funding_ann_pct": 2.36,
+      "short_share_of_total_pct": -189.3
+    }
+  },
+  "holdout": {
+    "full": {
+      "long": {
+        "ann_pct": -15.31,
+        "sharpe": -0.38,
+        "n_days": 587
+      },
+      "short": {
+        "ann_pct": 53.74,
+        "sharpe": 1.4,
+        "n_days": 587
+      },
+      "total": {
+        "ann_pct": 38.43,
+        "sharpe": 1.85,
+        "n_days": 587
+      },
+      "long_price_ann_pct": -30.16,
+      "long_funding_ann_pct": 19.49,
+      "short_price_ann_pct": 57.39,
+      "short_funding_ann_pct": 2.85,
+      "short_share_of_total_pct": 139.9
+    },
+    "h1": {
+      "long": {
+        "ann_pct": 2.63,
+        "sharpe": 0.06,
+        "n_days": 294
+      },
+      "short": {
+        "ann_pct": 36.84,
+        "sharpe": 0.88,
+        "n_days": 294
+      },
+      "total": {
+        "ann_pct": 39.47,
+        "sharpe": 2.42,
+        "n_days": 294
+      },
+      "long_price_ann_pct": 3.28,
+      "long_funding_ann_pct": 4.89,
+      "short_price_ann_pct": 40.54,
+      "short_funding_ann_pct": 3.67,
+      "short_share_of_total_pct": 93.3
+    },
+    "h2": {
+      "long": {
+        "ann_pct": -31.19,
+        "sharpe": -0.86,
+        "n_days": 294
+      },
+      "short": {
+        "ann_pct": 66.41,
+        "sharpe": 1.9,
+        "n_days": 294
+      },
+      "total": {
+        "ann_pct": 35.22,
+        "sharpe": 1.43,
+        "n_days": 294
+      },
+      "long_price_ann_pct": -61.56,
+      "long_funding_ann_pct": 34.13,
+      "short_price_ann_pct": 70.21,
+      "short_funding_ann_pct": 1.83,
+      "short_share_of_total_pct": 188.5
+    },
+    "pre_cutoff": {
+      "long": {
+        "ann_pct": -21.01,
+        "sharpe": -0.5,
+        "n_days": 468
+      },
+      "short": {
+        "ann_pct": 55.29,
+        "sharpe": 1.35,
+        "n_days": 468
+      },
+      "total": {
+        "ann_pct": 34.28,
+        "sharpe": 1.73,
+        "n_days": 468
+      },
+      "long_price_ann_pct": -35.16,
+      "long_funding_ann_pct": 18.89,
+      "short_price_ann_pct": 59.57,
+      "short_funding_ann_pct": 2.65,
+      "short_share_of_total_pct": 161.3
+    },
+    "post_cutoff": {
+      "long": {
+        "ann_pct": 10.68,
+        "sharpe": 0.33,
+        "n_days": 120
+      },
+      "short": {
+        "ann_pct": 43.2,
+        "sharpe": 1.6,
+        "n_days": 120
+      },
+      "total": {
+        "ann_pct": 53.88,
+        "sharpe": 2.22,
+        "n_days": 120
+      },
+      "long_price_ann_pct": -6.93,
+      "long_funding_ann_pct": 21.87,
+      "short_price_ann_pct": 44.39,
+      "short_funding_ann_pct": 3.64,
+      "short_share_of_total_pct": 80.2
+    }
+  }
+}

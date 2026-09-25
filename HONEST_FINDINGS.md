@@ -211,3 +211,27 @@ File: `reports/funding_interval_report.json`.
 Đọc thẳng: trong 52 ngày này chiến lược kiếm tiền nhờ **nắm long một nhóm alt đang tăng** (WLD, BCH, APT, SEI, ARB, INJ), còn chân short — cái mà luận điểm "phe long chen chúc phải trả funding" đặt cược vào — lỗ 14.6% vì giá của nhóm crowded-long không sập mà đi ngang hoặc tăng. Funding chỉ đóng góp 0.9 điểm. Backtest 600 ngày ghi funding chiếm ~26% PnL discovery và chân giá là phần chính, nên tỉ lệ này không lạ; nhưng mức tập trung thì đáng lo: một quý mà bỏ ba tên là âm.
 
 Không tune, không đổi gì. Ghi để đọc con số +8% cho đúng: nó là bằng chứng code chạy đúng và tracking được, **không phải** bằng chứng carry có lãi. Cùng với canary ba tuần nghiêng Bybit và phân tích power (khối 60 ngày chỉ 18% cơ hội tự chứng minh), câu hỏi ngày 90 vẫn mở như ngày đầu. File: `reports/paper_attribution.json`, `reports/paper_attribution_by_symbol.csv`.
+
+---
+
+## Chân short là toàn bộ edge; chân long lỗ trong 600 ngày (đo 26/09/2026)
+
+Câu hỏi đặt ra sau phân bổ paper (long +22.6%, short −14.6% trong 52 ngày): chân nào mới thật sự kiếm tiền? `analyze_backtest_legs.py` tách PnL của chiến lược đang chạy theo hai chân trên cả hai universe, cùng cửa sổ 600 ngày và cùng phí:
+
+| Khối | Discovery: long / short (%/năm) | Hold-out: long / short (%/năm) |
+|---|---|---|
+| Toàn bộ | **−7.2 / +40.0** | **−15.3 / +53.7** |
+| Nửa đầu | −2.2 / +31.5 | +2.6 / +36.8 |
+| Nửa sau | −14.1 / +49.1 | −31.2 / +66.4 |
+| Trước 03/04/2026 | −23.3 / +59.3 | −21.0 / +55.3 |
+| **Sau 03/04/2026** | **+59.1 / −38.6** | +10.7 / +43.2 |
+
+Sharpe riêng chân short: +0.99 discovery, +1.40 hold-out, dương ở cả hai nửa. Chân long: −0.19 và −0.38. Trong chân short, funding chỉ +2.5 đến +2.9%/năm; **+44 đến +57%/năm là giá**: nhóm crowded-long thua thị trường. Đó là cơ chế thật của CARRY-7d. Chân long chỉ là hedge beta, và lịch sử cho thấy nó trả tiền để làm việc đó.
+
+Hệ quả, nói thẳng:
+
+1. **Tháng 9 paper lãi nhờ chân yếu, chân mạnh đang lỗ.** Từ 03/04, chân short trên discovery lỗ −38.6%/năm (giá −35%), chân long lãi +59%. Cùng hình với 52 ngày paper. Đây không phải nhiễu ngắn, nó kéo dài từ tháng 4, và trùng với canary ba tuần nghiêng Bybit. Trên hold-out thì chân short vẫn dương sau cutoff (+43%), nên chưa thể kết luận edge chết; nhưng edge trên đúng 42 tên đang paper thì đã âm gần sáu tháng.
+2. **Đòn bẩy lợi nhuận lớn nhất còn lại là chân long**, không phải chân short. Nếu chân long lỗ 7 đến 15%/năm chỉ để giữ beta trung tính, thì câu hỏi đáng đăng ký cho Q1/2027 là: short-only + hedge BTC thay vì long rổ crowded-short. Không được chạy bây giờ: vừa thấy số mà thêm cell là post-hoc, và Q4 đã khóa ba cell. Ghi vào danh sách chờ pre-reg Q1.
+3. **Không tune, không bỏ chân nào.** Bỏ chân long sau khi thấy nó lỗ là đúng cái repo này từng làm sai; và một rổ short-only trong đợt alt tăng như 6 tháng qua sẽ lỗ nặng hơn nhiều so với −14.6%.
+
+File: `analyze_backtest_legs.py`, `reports/backtest_legs.json`.

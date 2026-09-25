@@ -174,6 +174,8 @@ Mọi số dưới đây có file gốc trong `reports/` hoặc ledger trong rep
 
 **Bot 15m cũ** (`reports/honest_harness_CLEAN.json`, 131 feature, 540 ngày, 8 fold, 20 permutation): SHORT hơn null +4.94bps, p=0.19; LONG +0.85bps, p=0.476; phí khả thi thấp nhất 12bps. Đã đóng.
 
+**Tách theo chân** (`analyze_backtest_legs.py`, 600 ngày, cùng phí): chân short là toàn bộ edge (+40%/năm discovery, +54% hold-out, Sharpe riêng 1.0 và 1.4, dương cả hai nửa; giá +44 đến +57%, funding chỉ +2.5 đến +2.9%), chân long lỗ (−7% và −15%/năm) và chỉ đóng vai hedge beta. Từ 03/04/2026 chân short trên discovery lỗ −39%/năm trong khi chân long lãi +59%: tháng 9 paper lãi nhờ chân yếu.
+
 **Các hướng đã đo và đóng** (`HONEST_FINDINGS.md`): rebalance 8h (Sharpe 0.84 so với 1.85), basis carry spot-perp (funding không vượt phí 4 chân), vol-targeting overlay (ngày tệ nhất luôn tệ hơn).
 
 Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và chấm bằng `gate_report.py` (13 điều kiện). Kết quả ngày 25/09: NOT-YET, thiếu ngày paper và 17 lần testnet COMPLETE.
@@ -205,7 +207,7 @@ Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và c
 Hạn chế đọc từ code:
 
 1. Bằng chứng cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, không phải áp đảo, và kỳ paper 60 hoặc 90 ngày về mặt thống kê không thể tự chứng minh edge (nửa CI ~24 bps ở 60 ngày). Paper chỉ kiểm được tracking, không kiểm được edge.
-2. Lãi paper tập trung: một ngày chiếm 33.5% tổng, ba đồng chiếm 45% lãi gộp, 21/39 đồng âm, ngày trung vị âm. Chân short (luận điểm chính của carry) lỗ trong cả kỳ.
+2. Lãi paper tập trung và đến từ chân sai: một ngày chiếm 33.5% tổng, ba đồng long chiếm 45% lãi gộp, 21/39 đồng âm. Chân short, tức toàn bộ edge trong 600 ngày backtest, lỗ trên discovery từ 03/04/2026 đến nay. Chân long lịch sử lỗ 7 đến 15%/năm và chỉ là hedge; short-only + hedge BTC là ứng viên pre-reg Q1/2027, không chạy trước đó.
 3. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
 4. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
 5. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
@@ -245,6 +247,7 @@ run_canaries.py             signal-health và funding-regime hằng tuần
 backup_state.py             backup ledger/audit/state mỗi sáng vào backups/ (giữ 30 ngày)
 export_income.py            income của sàn theo tháng -> reports/income_<env>_<YYYY-MM>.csv
 analyze_paper_attribution.py  PnL paper theo từng đồng, mức tập trung; tự kiểm khớp ledger
+analyze_backtest_legs.py    backtest 600 ngày tách chân long / chân short, theo nửa và theo cutoff
 run_daily.py                entry point mọi job: paper | testnet | canary | status
 run_scheduler.py            scheduler UTC cho container hoặc Linux không cron
 healthcheck.py              Docker HEALTHCHECK: marker, lock kẹt, paper im

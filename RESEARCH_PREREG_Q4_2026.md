@@ -110,3 +110,9 @@ Xếp đúng như vậy thì lệch **0.00%** trên cả 4 đồng đã kiểm, 
 Hệ quả phải nhớ: `collect_daily_snapshots.py` lưu giá trị REST dưới nhãn ngày D (đúng, vì đó là trạng thái lúc 00:00 ngày D), còn `honest/metrics.py` lưu cùng con số đó dưới nhãn D−1 (cũng đúng, vì đó là chốt cuối ngày D−1). Hai cách gọi tên đều đúng về cùng một thời điểm, nên **không bao giờ được join hai nguồn theo ngày thô** — phải dịch một bên trước. Panel dùng nhãn của kho lưu trữ vì đó là quy ước của harness: giá đóng cửa thuộc về ngày của nó và được khớp ở open hôm sau.
 
 Bài học đúng kiểu repo này: một tiêu chí kill viết đúng vẫn có thể bắn nhầm nếu quy ước thời gian của hai nguồn khác nhau. Kiểm tra rẻ nhất — dịch một ngày rồi so lại — mất năm phút và cứu cả một quý nghiên cứu. Test `test_rest_and_archive_are_the_same_series_one_day_apart` khóa lại chuyện đó.
+
+---
+
+## Danh sách chờ cho pre-reg Q1/2027 (ghi 26/09/2026, KHÔNG chạy trong Q4)
+
+- **Short-only + hedge BTC.** Tách chân 600 ngày (`analyze_backtest_legs.py`) cho thấy chân short là toàn bộ edge, chân long lỗ 7 đến 15%/năm và chỉ giữ beta. Câu hỏi: thay rổ long crowded-short bằng hedge BTC (beta rổ short, OLS 90 ngày) có giữ được Sharpe mà bỏ được cái giá đó không. Grid, null, luật quyết định sẽ viết khi đăng ký Q1; ghi ở đây để ý tưởng có ngày tháng và không bị "phát hiện lại" sau khi xem thêm dữ liệu.
