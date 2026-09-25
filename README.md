@@ -1,5 +1,6 @@
 # Binance Analyst
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](.github/workflows/ci.yml) [![CI](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Bot funding carry cho Binance USDT-M perpetual, kèm harness đo edge chống leakage và engine đặt lệnh fail-closed.
 
 ## Demo
