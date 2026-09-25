@@ -2,7 +2,7 @@
 
 Bot funding carry cho Binance USDT-M perpetual, kèm harness đo edge chống leakage và engine đặt lệnh fail-closed.
 
-Tác giả: Trịnh Ngọc Minh Nhật (minhnhatpro2504@gmail.com)
+Tác giả: Trịnh Ngọc Minh Nhật
 
 ## Demo
 
