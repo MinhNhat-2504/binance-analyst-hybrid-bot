@@ -153,3 +153,28 @@ Mấy chỗ trong `honest/daily.py`, `run_carry_paper.py` và `carry_paper_confi
 - **FA-3 — reindex không được forward-fill.** `fill_method=None` khi reindex panel. Mặc định pad sẽ kéo giá của ngày sống sang ngày chết, làm biến mất đúng cái mà FA-1 vừa chặn.
 
 `carry_paper_config_v1.json` bị khóa bằng hash nên không sửa được nữa (đúng như thiết kế) — mã trích trong đó giờ tra ở mục này.
+
+---
+
+## Hai bộ đo có mâu thuẫn không? (25/09/2026) — không, chúng hỏi hai câu khác nhau
+
+`honest/` nói CARRY-7d có p=0.005 trên 592 ngày. `clean_research/` nói CI 95% của các khối sau cutoff 03/04 cắt 0 và double hold-out có shift p=0.18. Đọc README cũ thì tưởng hai pipeline kết luận ngược nhau. `reconcile_evaluators.py` dựng lại chuỗi return ngày của `honest/` rồi cắt đúng mốc 03/04 và tính đúng HAC CI mà `clean_research/` dùng:
+
+| Khối (10 bps/leg) | `honest/` cắt lại | `clean_research/` báo cáo |
+|---|---|---|
+| Discovery trước cutoff | +9.87 bps/ngày, CI [+2.2, +17.5], n=472 | +9.96, CI [+2.0, +17.9], n=449 |
+| Discovery sau cutoff | +5.59, CI [−16.3, +27.5], n=120 | +4.97, CI [−17.0, +27.0], n=119 |
+| Hold-out sau cutoff | +14.76, CI [−8.2, +37.7], n=120 | +13.66, CI [−9.2, +36.6], n=119 |
+
+Cùng số tới sai số làm tròn. Không có mâu thuẫn về **đo lường**. Khác biệt nằm ở **câu hỏi**:
+
+- `honest/` hỏi: Sharpe trên toàn bộ 592 ngày có tách được khỏi null hoán vị cột không? Có (p=0.005). Null đó có Sharpe trung bình −0.73 vì nó vẫn trả phí, nên bài kiểm này đo *kỹ năng chọn tên so với chọn ngẫu nhiên cùng chi phí*.
+- `clean_research/` hỏi: mỗi khối 120 ngày sau cutoff, đứng riêng, có mean > 0 với CI HAC không? Không. Nhưng với độ lệch chuẩn ngày ~96 bps, một khối 120 ngày có nửa bề rộng CI kỳ vọng ~17 bps, còn edge kỳ vọng chỉ ~9 bps/ngày. **Kể cả khi edge là thật 100%, xác suất một khối 120 ngày tự chứng minh được là 18%.** Khối 592 ngày cũng chỉ đạt 65%. Muốn 80% cần ~850 ngày, mà lịch sử perp có ý nghĩa không dài đến thế.
+
+Ba hệ quả phải nói thẳng:
+
+1. Bằng chứng cho CARRY-7d là **t ≈ 2.3 trên ~590 ngày, lặp lại trên hai universe rời nhau**. Thật, nhưng không áp đảo. Sharpe 1.78 là ước lượng điểm; khoảng tin cậy của nó rộng.
+2. Điều kiện "Sharpe > 0.5 ở ngày 60" của kỳ paper **về mặt thống kê gần như không phân biệt được gì**: 60 ngày có nửa CI ~24 bps. Paper là bài kiểm *tracking* (code chạy đúng, fill đúng, không lệch backtest), không phải bài kiểm *edge*. Cổng ngày 60/90 nên đọc đúng nghĩa đó.
+3. `clean_research/` nghiêm hơn vì nó đòi từng khối tự đứng, và với chuỗi nhiễu thế này thì không khối ngắn nào đứng nổi, dù edge có thật hay không. Không sửa pipeline nào cả; chỉ sửa cách đọc.
+
+File: `reconcile_evaluators.py`, `reports/evaluator_reconciliation.json`.

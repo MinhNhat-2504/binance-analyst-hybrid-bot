@@ -161,7 +161,7 @@ Mọi số dưới đây có file gốc trong `reports/` hoặc ledger trong rep
 
 **Cross-exchange** (`reports/crossex_lab_report.json`, 577 ngày chung): weight từ funding Binance áp lên giá Bybit giữ Sharpe 1.61 / 1.70; weight từ funding Bybit chỉ 1.09 / -0.35. Edge nằm ở thông tin trong funding Binance, không phải "funding nói chung".
 
-**Pipeline OOS độc lập** (`CLEAN_OOS_FINDINGS.md`, `clean_research/`): CARRY-7d có PnL replay dương sau phí, nhưng CI 95% của các khối sau cutoff cắt 0 và double-holdout không thắng null. Hai bộ đo trong repo không đồng ý về độ mạnh của bằng chứng; bộ nghiêm hơn nói "chưa đủ". Điều này được ghi nhận, không được che.
+**Pipeline OOS độc lập** (`CLEAN_OOS_FINDINGS.md`, `clean_research/`): CARRY-7d có PnL replay dương sau phí, nhưng CI 95% của các khối 120 ngày sau cutoff cắt 0. `reconcile_evaluators.py` cắt chuỗi của `honest/` đúng mốc đó và ra cùng số (+5.59 vs +4.97 bps/ngày, CI cắt 0 y hệt): hai bộ đo không mâu thuẫn, chỉ hỏi hai câu khác nhau. Với độ lệch chuẩn ngày ~96 bps, một khối 120 ngày chỉ có 18% xác suất tự chứng minh được kể cả khi edge là thật; toàn bộ 592 ngày cũng chỉ 65%. Bằng chứng thật cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, lặp trên hai universe rời nhau. Chi tiết trong `HONEST_FINDINGS.md`.
 
 **Paper trading** (`carry_paper_ledger.csv`, từ 2026-08-03): ngày 52/60, +8.14%, Sharpe annualized 3.33, max drawdown -2.9%. Độ lệch chuẩn ngày 0.70% nên 1 sigma một tháng khoảng 3.8%; 52 ngày chưa đủ để kết luận.
 
@@ -199,7 +199,7 @@ Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và c
 
 Hạn chế đọc từ code:
 
-1. Hai bộ đo trong repo mâu thuẫn về CARRY-7d: `honest/` cho p=0.005, `clean_research/` cho CI cắt 0 và double-holdout không thắng null. Chưa có phân tích vì sao hai pipeline khác kết luận.
+1. Bằng chứng cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, không phải áp đảo, và kỳ paper 60 hoặc 90 ngày về mặt thống kê không thể tự chứng minh edge (nửa CI ~24 bps ở 60 ngày). Paper chỉ kiểm được tracking, không kiểm được edge.
 2. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
 3. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
 4. Phụ thuộc Windows: lịch chạy bằng Task Scheduler, đường dẫn Python và thư mục hardcode trong bốn file `.bat`, chạy ẩn qua `run_hidden.vbs`. Không có Docker, không chạy được trên server Linux nếu không viết lại phần lịch.
@@ -212,7 +212,7 @@ Việc làm tiếp, theo thứ tự:
 
 1. Đủ 20 ngày testnet COMPLETE trước mốc ngày 90 (01/11/2026) để cổng chấm được phần thực thi; mọi thứ khác phụ thuộc vào đây.
 2. Chạy ba cell Q4 đã đăng ký từ 01/10 (hysteresis cho carry, low-vol cross-section có hedge beta, phân kỳ top-trader với đám đông) trên dữ liệu `honest/metrics.py` đã cache.
-3. Đối chiếu `honest/` với `clean_research/` trên cùng snapshot để giải thích vì sao hai bộ đo không đồng ý về CARRY-7d.
+3. Đo lệch do 6 symbol trả funding mỗi 4h (hạn chế 8) trên chính ledger paper, để biết nó ăn bao nhiêu bps khi lên live.
 
 ## Cấu trúc thư mục
 
