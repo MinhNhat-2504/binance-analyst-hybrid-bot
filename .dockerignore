@@ -1,0 +1,10 @@
+.git
+__pycache__
+**/__pycache__
+*.pyc
+archive/
+.honest_cache/
+data_snapshots/
+*.log
+*.docx
+.execution/

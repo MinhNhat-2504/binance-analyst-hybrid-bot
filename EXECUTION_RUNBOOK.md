@@ -22,6 +22,8 @@ Nó **tự tắt** ngày `execution_ceilings` khai live > 0 — không cần nh�
 
 **Có marker là có file trên Desktop.** `notify_markers.py` chạy sau task paper mỗi sáng: `.execution/ATTENTION` hoặc lock tồn tại → xuất hiện `BINANCE BOT - CAN XEM.txt` ngoài Desktop, xử lý xong marker thì file tự mất. `canary_ALERT` chỉ mang tính thông tin (không chặn run) và phản ánh tuần mới nhất.
 
+**Chạy ở đâu cũng được, nhưng chỉ một nơi.** Mọi job đi qua `python run_daily.py <stage>`. Trên Windows ba task gọi nó; trong Docker `run_scheduler.py` gọi nó theo giờ UTC. Nếu bật cả task Windows lẫn `docker compose up -d` trên cùng thư mục, lock O_EXCL và kiểm tra target đã COMPLETE trong audit chặn được chạy đúp, nhưng đừng dựa vào đó: tắt task Windows (`schtasks /delete /tn CarryTestnetDaily /f` và hai task kia) trước khi dùng container, hoặc ngược lại. `docker ps` hiện `(unhealthy)` khi có ATTENTION, lock kẹt quá 2 giờ, hoặc paper không book 3 ngày.
+
 **Máy phải thức lúc 07:20.** Testnet cố ý KHÔNG bù ngày thiếu (fill phải gần 00:20 UTC). Máy tắt/ngủ = ngày đó không có run, không có lỗi, không có marker — chỉ `python status.py` mới cho thấy "missed". Cần ≥20 COMPLETE trước ngày 60, nên uptime sáng ~70% là bắt buộc. Run muộn quá 6h sẽ tự ghi `MISSED_WINDOW` (không marker, không chặn ngày sau).
 
 Ba tầng để máy tự dậy và task không bị giết (bài học 31/08–03/09, xem `carry_paper_incidents.md`):

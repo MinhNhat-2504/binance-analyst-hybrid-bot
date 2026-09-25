@@ -1,13 +1,4 @@
 @echo off
-rem Daily paper-trading run for CARRY-7d. Safe to run any time; missed days are
-rem reconstructed automatically (catch-up), so double-runs and gaps are harmless.
-cd /d "d:\Project\AI Engineer\Binance-Analyst"
-"C:\Users\Minh Nhat\AppData\Local\Programs\Python\Python311\python.exe" run_carry_paper.py >> carry_paper_task.log 2>&1
-
-rem Positioning snapshots for Q4 research (public API, no key, no orders). Deliberately hung off the
-
-rem PAPER task, not the 07:20 testnet one, so a slow public endpoint can never delay the fill window.
-
-"C:\Users\Minh Nhat\AppData\Local\Programs\Python\Python311\python.exe" collect_daily_snapshots.py >> collect_snapshots_task.log 2>&1
-rem Desktop flag while any marker blocks the testnet loop (20 silent days on 2026-09, never again).
-"C:\Users\Minh Nhat\AppData\Local\Programs\Python\Python311\python.exe" notify_markers.py >> notify_markers_task.log 2>&1
+rem Daily paper stage. Same chain on every OS: python run_daily.py paper
+cd /d "%~dp0"
+"C:\Users\Minh Nhat\AppData\Local\Programs\Python\Python311\python.exe" -X utf8 run_daily.py paper >> run_daily_task.log 2>&1

@@ -1,0 +1,15 @@
+# docker compose up -d        -> scheduler runs paper 00:05, testnet 00:20, canary Sun 01:00 (UTC)
+# docker compose run --rm bot python run_daily.py status
+# docker compose logs -f
+services:
+  bot:
+    build: .
+    image: binance-analyst:local
+    container_name: binance-analyst
+    restart: unless-stopped
+    volumes:
+      - .:/app                     # code + state; .env.testnet is read from here
+    environment:
+      - TZ=UTC
+    # The scheduler needs no ports. Keys come from .env.testnet inside the mount, never
+    # from compose environment, so they are not visible in `docker inspect`.

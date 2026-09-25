@@ -1,5 +1,5 @@
 # Binance Analyst
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](.github/workflows/ci.yml) [![CI](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](.github/workflows/ci.yml) [![CI](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Docker](https://img.shields.io/badge/docker-compose-2496ED)](docker-compose.yml)
 
 Bot funding carry cho Binance USDT-M perpetual, kèm harness đo edge chống leakage và engine đặt lệnh fail-closed.
 
@@ -103,7 +103,7 @@ Code chặn giữa hai tầng: nghiên cứu chỉ được ghi vào file target
 
 ## Cách chạy
 
-Yêu cầu: Python 3.11 (đã chạy trên 3.11.9), Windows cho phần lịch tự động; phần nghiên cứu và paper chạy được trên mọi hệ điều hành. Không có Dockerfile.
+Yêu cầu: Python 3.11 (đã chạy trên 3.11.9). Mọi thứ chạy được trên Windows, Linux hoặc trong Docker; lịch tự động có hai cách, Windows Task Scheduler hoặc scheduler trong container.
 
 ```bash
 git clone https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot
@@ -140,7 +140,12 @@ python run_testnet_execution.py --execute --budget-usd 2000 --confirm-testnet I_
 python reconcile_paper_vs_testnet.py
 ```
 
-Chạy tự động mỗi sáng: bấm đúp `INSTALL_TASKS.bat` (tạo ba task Windows: paper 07:05, testnet 07:20, canary Chủ nhật 08:00, bật wake timer). Đường dẫn Python và thư mục dự án đang hardcode trong các file `.bat`; máy khác phải sửa hai đường dẫn đó.
+Mọi job đi qua một entry point: `python run_daily.py paper|testnet|canary|status`. Chạy tự động có hai cách, **chỉ dùng một trong hai** trên cùng một bộ state:
+
+- Windows: bấm đúp `INSTALL_TASKS.bat` (ba task: paper 07:05, testnet 07:20, canary Chủ nhật 08:00, giờ Việt Nam, bật wake timer). Các file `.bat` chỉ gọi `run_daily.py`; đường dẫn Python trong đó là của máy tác giả.
+- Docker, mọi hệ điều hành: `docker compose up -d`. Container chạy `run_scheduler.py` theo giờ UTC (00:05, 00:20, Chủ nhật 01:00), bind-mount thư mục repo làm state, healthcheck báo `unhealthy` khi có marker ATTENTION, lock kẹt hoặc paper im 3 ngày. `docker compose run --rm bot python run_daily.py status` để xem tình trạng.
+
+Sau mỗi lần chạy testnet, `status.txt` được ghi ở gốc repo và chép ra Desktop nếu có.
 
 Live: `run_live_execution.py` tồn tại nhưng trả về mã 2 "NOT AUTHORIZED" chừng nào `execution_ceilings_v1.json` còn ghi `live: 0.0`. Không có cờ nào bật được.
 
@@ -202,7 +207,7 @@ Hạn chế đọc từ code:
 1. Bằng chứng cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, không phải áp đảo, và kỳ paper 60 hoặc 90 ngày về mặt thống kê không thể tự chứng minh edge (nửa CI ~24 bps ở 60 ngày). Paper chỉ kiểm được tracking, không kiểm được edge.
 2. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
 3. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
-4. Phụ thuộc Windows: lịch chạy bằng Task Scheduler, đường dẫn Python và thư mục hardcode trong bốn file `.bat`, chạy ẩn qua `run_hidden.vbs`. Không có Docker, không chạy được trên server Linux nếu không viết lại phần lịch.
+4. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
 5. Không có unattended live runner. `run_live_execution.py` là CLI thủ công; tháng đầu live (nếu có) phải gõ tay mỗi sáng.
 6. Order style `MAKER_THEN_MARKET` đã viết và test nhưng chưa từng chạy trên sàn; mặc định vẫn MARKET. Tổng thời gian chờ maker bị chặn ở nửa TTL kill-switch, chưa đo trên fill thật.
 7. Universe 42 symbol cố định từ tháng 8; MKRUSDT và TONUSDT đã SETTLING trên live, được zombie guard loại nhưng chưa có cơ chế thay symbol.
@@ -235,6 +240,10 @@ status.py                   6 dòng tình trạng; ghi ra Desktop mỗi sáng
 check_live_filters.py       sàn thật nhận rổ ở vốn tối thiểu bao nhiêu (không cần key)
 collect_daily_snapshots.py  gom OI, long/short ratio, taker flow mỗi ngày (data_snapshots/, không commit)
 run_canaries.py             signal-health và funding-regime hằng tuần
+run_daily.py                entry point mọi job: paper | testnet | canary | status
+run_scheduler.py            scheduler UTC cho container hoặc Linux không cron
+healthcheck.py              Docker HEALTHCHECK: marker, lock kẹt, paper im
+Dockerfile, docker-compose.yml  image python:3.11-slim, state bind-mount, chạy non-root
 notify_markers.py           có marker -> file trên Desktop
 carry_paper_config_v1.json  luật CARRY-7d và cổng, sha256-locked
 execution_ceilings_v1.json  trần vốn: testnet 2000, live 0

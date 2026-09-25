@@ -58,3 +58,5 @@ reports/live_filters_check.json
 
 # ho so ca nhan, khong thuoc ve repo
 *.docx
+status.txt
+scheduler_state.json
