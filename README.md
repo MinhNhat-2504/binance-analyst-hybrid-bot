@@ -2,6 +2,8 @@
 
 Bot funding carry cho Binance USDT-M perpetual, kèm harness đo edge chống leakage và engine đặt lệnh fail-closed.
 
+Tác giả: Trịnh Ngọc Minh Nhật (minhnhatpro2504@gmail.com)
+
 ## Demo
 
 Không có giao diện. Đầu ra hằng ngày của bot là một dòng trạng thái và một file target. Ví dụ thật, in bởi `python status.py` ngày 25/09/2026:
@@ -28,8 +30,6 @@ Ví dụ target mà engine nhận mỗi sáng (`execution/carry_targets_latest.j
   "reference_prices": {"BTCUSDT": 79616.1, "PYTHUSDT": 0.05436, "SOLUSDT": 101.86, "ATOMUSDT": 1.493}
 }
 ```
-
-[CẦN BỔ SUNG: ảnh chụp file `BINANCE BOT - TINH TRANG.txt` trên Desktop hoặc equity curve của paper nếu muốn có hình]
 
 ## Bài toán
 
@@ -243,6 +243,6 @@ RESEARCH_PREREG_Q4_2026.md  ba cell tháng 10, khóa trước khi chạy
 - Dữ liệu: Binance USDT-M Futures public REST và data.binance.vision; Bybit v5 và OKX public API cho kiểm tra cross-exchange. Không dùng dữ liệu trả phí.
 - Thư viện: pandas, numpy, pyarrow, requests, scikit-learn, XGBoost, joblib, pytest.
 - Không có model gốc bên ngoài; model 15m cũ tự train và đã archive.
-- Repo không có file LICENSE. [CẦN BỔ SUNG: chọn license, ví dụ MIT, và thêm file LICENSE]
+- Giấy phép: MIT, xem file `LICENSE`.
 
 Repo phục vụ nghiên cứu. Funding carry vẫn lỗ nặng được khi thị trường squeeze; ai bật live tự chịu trách nhiệm.
