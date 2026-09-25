@@ -39,7 +39,7 @@ Ba tầng để máy tự dậy và task không bị giết (bài học 31/08–
 
 Kiểm tra nhanh: `Get-ScheduledTask Carry* | % { $_.TaskName + ' ' + $_.Settings.WakeToRun }` trong PowerShell phải ra `True` cả ba.
 
-**Một lệnh xem toàn cảnh:** `python status.py` — paper/testnet/markers/canary/fills trong 6 dòng. Các lệnh chỉ-đọc khác: `python gate_report.py` (phán quyết gate ngày 60, ghi `reports/GATE_REPORT.md`), `python check_live_filters.py` (sàn thật nhận rổ này ở vốn tối thiểu bao nhiêu — không cần key), `python track_paper_vs_testnet.py` (tracking error), `python analyze_execution_quality.py` (chất lượng fill). `collect_daily_snapshots.py` chạy tự động sau paper mỗi sáng, gom dữ liệu vị thế (OI, long/short ratio, taker flow, basis) vào `data_snapshots/` cho nghiên cứu Q4 — Binance chỉ giữ 30 ngày nên **thư mục đó là tài sản, nên backup**.
+**Không phải gõ gì để biết tình hình.** Mỗi sáng sau 07:20 task testnet ghi kết quả `status.py` ra `Desktop\BINANCE BOT - TINH TRANG.txt` (ghi đè hằng ngày); có sự cố thì thêm file `BINANCE BOT - CAN XEM.txt` bên cạnh. Muốn xem ngay lúc khác thì `python status.py` — paper/testnet/markers/canary/fills trong 6 dòng. Các lệnh chỉ-đọc khác: `python gate_report.py` (phán quyết gate ngày 60, ghi `reports/GATE_REPORT.md`), `python check_live_filters.py` (sàn thật nhận rổ này ở vốn tối thiểu bao nhiêu — không cần key), `python track_paper_vs_testnet.py` (tracking error), `python analyze_execution_quality.py` (chất lượng fill). `collect_daily_snapshots.py` chạy tự động sau paper mỗi sáng, gom dữ liệu vị thế (OI, long/short ratio, taker flow, basis) vào `data_snapshots/` cho nghiên cứu Q4 — Binance chỉ giữ 30 ngày nên **thư mục đó là tài sản, nên backup**.
 
 ## Chu trình một ngày bình thường (chạy tay, nếu muốn)
 

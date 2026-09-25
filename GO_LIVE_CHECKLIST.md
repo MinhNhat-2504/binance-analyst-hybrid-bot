@@ -80,7 +80,7 @@ Tháng 1 live: vốn khởi điểm. Mỗi tháng sạch (tracking ≤1%/tháng,
 
 | Khi nào | Việc | Ai làm |
 |---|---|---|
-| mỗi sáng 07:05 / 07:20 | máy cắm điện, nắp mở. Cần thêm **17 lần COMPLETE trong 28 ngày** | máy tự chạy; bạn liếc `python status.py` vài ngày một lần |
+| mỗi sáng 07:05 / 07:20 | máy cắm điện, nắp mở. Cần thêm **17 lần COMPLETE trong 28 ngày** | máy tự chạy; sáng nào cũng có `BINANCE BOT - TINH TRANG.txt` trên Desktop, liếc vài ngày một lần |
 | ~20/09 | mở tài khoản (hoặc sub-account) Binance **riêng cho bot**, bật futures, tạo key **read-only** trước, chưa nạp tiền | bạn |
 | T7 26/09 | **diễn tập kill-switch giữa chừng** trên testnet: chạy tay, bật kill-switch lúc đang đặt lệnh, xử lý `HALTED_*` theo runbook, ghi rồi đóng incident | bạn + runbook |
 | 02/10 sáng | `python gate_report.py` → đọc verdict. Nếu GO: sang Phần 4 và **ngủ một đêm** trước khi sửa ceilings | bạn |
