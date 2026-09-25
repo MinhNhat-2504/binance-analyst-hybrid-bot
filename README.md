@@ -168,7 +168,7 @@ Mọi số dưới đây có file gốc trong `reports/` hoặc ledger trong rep
 
 **Pipeline OOS độc lập** (`CLEAN_OOS_FINDINGS.md`, `clean_research/`): CARRY-7d có PnL replay dương sau phí, nhưng CI 95% của các khối 120 ngày sau cutoff cắt 0. `reconcile_evaluators.py` cắt chuỗi của `honest/` đúng mốc đó và ra cùng số (+5.59 vs +4.97 bps/ngày, CI cắt 0 y hệt): hai bộ đo không mâu thuẫn, chỉ hỏi hai câu khác nhau. Với độ lệch chuẩn ngày ~96 bps, một khối 120 ngày chỉ có 18% xác suất tự chứng minh được kể cả khi edge là thật; toàn bộ 592 ngày cũng chỉ 65%. Bằng chứng thật cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, lặp trên hai universe rời nhau. Chi tiết trong `HONEST_FINDINGS.md`.
 
-**Paper trading** (`carry_paper_ledger.csv`, từ 2026-08-03): ngày 52/60, +8.14%, Sharpe annualized 3.33, max drawdown -2.9%. Độ lệch chuẩn ngày 0.70% nên 1 sigma một tháng khoảng 3.8%; 52 ngày chưa đủ để kết luận.
+**Paper trading** (`carry_paper_ledger.csv`, từ 2026-08-03): ngày 52/60, +8.14%, Sharpe annualized 3.33, max drawdown -2.9%. Độ lệch chuẩn ngày 0.70% nên 1 sigma một tháng khoảng 3.8%; 52 ngày chưa đủ để kết luận. Phân bổ theo đồng (`analyze_paper_attribution.py`, khớp ledger từng ngày): chân long +22.6%, chân short −14.6%, funding chỉ +0.9%; ba tên long (WLD, BCH, APT) chiếm 45% lãi gộp và bỏ ba tên đó là −6.4%. Con số +8% là bằng chứng tracking, không phải bằng chứng carry có lãi.
 
 **Testnet** (`.execution/testnet_execution.sqlite3`, `execution_quality.csv`): 3 ngày COMPLETE, 90 lệnh khớp thật. Shortfall so với giá open paper giả định: trung bình -5.2bps, trung vị +3.7bps, p90 +62.6bps. Phí thật trên sàn demo: taker 4bps, maker 2bps, thấp hơn giả định 10bps.
 
@@ -205,13 +205,14 @@ Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và c
 Hạn chế đọc từ code:
 
 1. Bằng chứng cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, không phải áp đảo, và kỳ paper 60 hoặc 90 ngày về mặt thống kê không thể tự chứng minh edge (nửa CI ~24 bps ở 60 ngày). Paper chỉ kiểm được tracking, không kiểm được edge.
-2. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
-3. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
-4. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
-5. Vòng live không người trực (`run_carry_live_daily.py`) đã viết và test bằng sàn giả, nhưng chưa từng chạy một ngày thật; tháng đầu live vẫn là chạy tay theo checklist, và file ủy quyền `unattended_live_v1.json` chỉ được viết sau đó.
-6. Order style `MAKER_THEN_MARKET` đã viết và test nhưng chưa từng chạy trên sàn; mặc định vẫn MARKET. Tổng thời gian chờ maker bị chặn ở nửa TTL kill-switch, chưa đo trên fill thật.
-7. Universe 42 symbol cố định từ tháng 8; MKRUSDT và TONUSDT đã SETTLING trên live, được zombie guard loại nhưng chưa có cơ chế thay symbol.
-8. Sáu symbol trả funding mỗi 4h (TIA, ENA, JTO, PYTH, TAO, ORDI) chiếm 17.9% số chỗ trong rổ paper và gần như chỉ ở bên short (PYTH 33/52 ngày). Paper giả định 3 kỳ mỗi ngày; phần backtest loại chúng ra chạy 01/10 (`measure_funding_interval.py`).
+2. Lãi paper tập trung: một ngày chiếm 33.5% tổng, ba đồng chiếm 45% lãi gộp, 21/39 đồng âm, ngày trung vị âm. Chân short (luận điểm chính của carry) lỗ trong cả kỳ.
+3. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
+4. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
+5. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
+6. Vòng live không người trực (`run_carry_live_daily.py`) đã viết và test bằng sàn giả, nhưng chưa từng chạy một ngày thật; tháng đầu live vẫn là chạy tay theo checklist, và file ủy quyền `unattended_live_v1.json` chỉ được viết sau đó.
+7. Order style `MAKER_THEN_MARKET` đã viết và test nhưng chưa từng chạy trên sàn; mặc định vẫn MARKET. Tổng thời gian chờ maker bị chặn ở nửa TTL kill-switch, chưa đo trên fill thật.
+8. Universe 42 symbol cố định từ tháng 8; MKRUSDT và TONUSDT đã SETTLING trên live, được zombie guard loại nhưng chưa có cơ chế thay symbol.
+9. Sáu symbol trả funding mỗi 4h (TIA, ENA, JTO, PYTH, TAO, ORDI) chiếm 17.9% số chỗ trong rổ paper và gần như chỉ ở bên short (PYTH 33/52 ngày). Paper giả định 3 kỳ mỗi ngày; phần backtest loại chúng ra chạy 01/10 (`measure_funding_interval.py`).
 
 Việc làm tiếp, theo thứ tự:
 
@@ -241,6 +242,9 @@ status.py                   6 dòng tình trạng; ghi ra Desktop mỗi sáng
 check_live_filters.py       sàn thật nhận rổ ở vốn tối thiểu bao nhiêu (không cần key)
 collect_daily_snapshots.py  gom OI, long/short ratio, taker flow mỗi ngày (data_snapshots/, không commit)
 run_canaries.py             signal-health và funding-regime hằng tuần
+backup_state.py             backup ledger/audit/state mỗi sáng vào backups/ (giữ 30 ngày)
+export_income.py            income của sàn theo tháng -> reports/income_<env>_<YYYY-MM>.csv
+analyze_paper_attribution.py  PnL paper theo từng đồng, mức tập trung; tự kiểm khớp ledger
 run_daily.py                entry point mọi job: paper | testnet | canary | status
 run_scheduler.py            scheduler UTC cho container hoặc Linux không cron
 healthcheck.py              Docker HEALTHCHECK: marker, lock kẹt, paper im

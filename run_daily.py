@@ -36,6 +36,7 @@ STAGES: dict[str, list[tuple[str, list[str], str]]] = {
     "paper": [
         ("paper", ["run_carry_paper.py"], "carry_paper_task.log"),
         ("snapshots", ["collect_daily_snapshots.py"], "collect_snapshots_task.log"),
+        ("backup", ["backup_state.py"], "backup_task.log"),
         ("notify", ["notify_markers.py"], "notify_markers_task.log"),
     ],
     # The 00:20 UTC slot runs BOTH loops. Exactly one is ever armed: the testnet loop

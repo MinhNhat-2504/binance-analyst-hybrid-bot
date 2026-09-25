@@ -188,3 +188,26 @@ File: `reconcile_evaluators.py`, `reports/evaluator_reconciliation.json`.
 Đọc thẳng: Binance chuyển một hợp đồng sang 4h đúng khi funding của nó cực đoan, và xếp hạng theo tổng funding 7 ngày đưa đúng những tên đó lên đầu bên short. Không phải lỗi, không tune. Nhưng đây là nơi paper và live sẽ lệch nhau (paper giả định 3 kỳ settle/ngày ở quy tắc ranh giới funding), và là nơi một cú squeeze đánh trúng nhất. Phần backtest loại 6 tên này chạy ngày 01/10 cùng cell 1 theo lịch pre-reg.
 
 File: `reports/funding_interval_report.json`.
+
+---
+
+## +8% paper là chân long thắng trong một đợt alt tăng, không phải carry đang hoạt động (25/09/2026)
+
+`analyze_paper_attribution.py` dựng lại PnL 52 ngày paper theo từng đồng, đúng công thức của executor (tổng theo đồng khớp ledger từng ngày, sai số < 1e-5). Kết quả:
+
+| | |
+|---|---:|
+| Tổng (cộng dồn số học) | +8.03% |
+| Chân long | **+22.60%** (giá +22.98, funding +0.36) |
+| Chân short | **−14.57%** (giá −14.16, funding +0.51) |
+| Funding, cả hai chân | +0.87% ≈ 11% tổng |
+| Phí | −1.66% ≈ −21% tổng |
+| Top 1 (WLDUSDT, long 38/38 ngày) | 17% tổng lãi gộp |
+| Top 3 (WLD, BCH, APT, đều long) | 45%; **bỏ 3 tên này: −6.38%** |
+| Ngày đẹp nhất | 33.5% tổng |
+| Ngày trung vị | −2.1 bps; 50% số ngày dương |
+| Đồng âm | 21/39; nặng nhất ENA, DOGE, UNI, PYTH, BTC (toàn bên short) |
+
+Đọc thẳng: trong 52 ngày này chiến lược kiếm tiền nhờ **nắm long một nhóm alt đang tăng** (WLD, BCH, APT, SEI, ARB, INJ), còn chân short — cái mà luận điểm "phe long chen chúc phải trả funding" đặt cược vào — lỗ 14.6% vì giá của nhóm crowded-long không sập mà đi ngang hoặc tăng. Funding chỉ đóng góp 0.9 điểm. Backtest 600 ngày ghi funding chiếm ~26% PnL discovery và chân giá là phần chính, nên tỉ lệ này không lạ; nhưng mức tập trung thì đáng lo: một quý mà bỏ ba tên là âm.
+
+Không tune, không đổi gì. Ghi để đọc con số +8% cho đúng: nó là bằng chứng code chạy đúng và tracking được, **không phải** bằng chứng carry có lãi. Cùng với canary ba tuần nghiêng Bybit và phân tích power (khối 60 ngày chỉ 18% cơ hội tự chứng minh), câu hỏi ngày 90 vẫn mở như ngày đầu. File: `reports/paper_attribution.json`, `reports/paper_attribution_by_symbol.csv`.
