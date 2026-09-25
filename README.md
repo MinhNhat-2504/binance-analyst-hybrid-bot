@@ -1,8 +1,6 @@
 # Binance Analyst
-
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](.github/workflows/ci.yml) [![CI](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/MinhNhat-2504/binance-analyst-hybrid-bot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 Bot funding carry cho Binance USDT-M perpetual, kèm harness đo edge chống leakage và engine đặt lệnh fail-closed.
-
-Tác giả: Trịnh Ngọc Minh Nhật
 
 ## Demo
 
@@ -39,30 +37,37 @@ Câu hỏi thật không phải "chiến lược nào lãi" mà "làm sao biết
 
 ## Kiến trúc
 
-```
-Binance public API (klines, funding, exchangeInfo)         data.binance.vision (metrics archive)
-        |                                                             |
-        v                                                             v
-  honest/data.py, honest/funding.py  ---- cache parquet ----   honest/metrics.py
-        |
-        v
-  honest/daily.py  build_panel (zombie guard) -> _xs_weights -> evaluate -> permutation null
-        |                                   \
-        |                                    -> run_daily_lab.py / run_carry_holdout.py -> reports/*.json
-        v
-  run_carry_paper.py  (config sha256-locked, next-open fills)  -> carry_paper_ledger.csv, carry_paper_state.json
-        |
-        v
-  export_carry_targets.py  (recompute + cross-check vs paper)  -> execution/carry_targets_latest.json
-        |
-        v
-  run_carry_testnet_daily.py  (lock, kill-switch self-release, DD guard, ATTENTION marker)
-        |
-        v
-  execution/engine.py  build_plan -> submit -> verify (quantity space) -> contract  <-> execution/binance_futures.py
-        |                                                                                (retry idempotent only)
-        v
-  .execution/testnet_execution.sqlite3 (audit)  -> reconcile_paper_vs_testnet.py, gate_report.py, status.py
+```mermaid
+flowchart TD
+    API["Binance public API<br/>klines, funding, exchangeInfo"]
+    ARCH["data.binance.vision<br/>metrics archive"]
+    subgraph R["Nghiên cứu và đo lường"]
+        LOAD["honest/data.py, honest/funding.py"]
+        MET["honest/metrics.py"]
+        DAILY["honest/daily.py<br/>build_panel (zombie guard) -> _xs_weights -> evaluate -> permutation null"]
+        LAB["run_daily_lab.py / run_carry_holdout.py"]
+        REP["reports/*.json"]
+        PAPER["run_carry_paper.py<br/>config sha256-locked, next-open fills"]
+        LEDGER["carry_paper_ledger.csv, carry_paper_state.json"]
+    end
+    EXPORT["export_carry_targets.py<br/>recompute + cross-check vs paper"]
+    TARGET["execution/carry_targets_latest.json"]
+    subgraph X["Thực thi"]
+        LOOP["run_carry_testnet_daily.py<br/>lock, kill-switch self-release, DD guard, ATTENTION marker"]
+        ENGINE["execution/engine.py<br/>build_plan -> submit -> verify (quantity space) -> contract"]
+        CLIENT["execution/binance_futures.py<br/>retry idempotent only"]
+        AUDIT[(".execution/testnet_execution.sqlite3<br/>audit")]
+        READ["reconcile_paper_vs_testnet.py, gate_report.py, status.py"]
+    end
+    API --> LOAD
+    ARCH --> MET
+    LOAD -.->|cache parquet| MET
+    LOAD --> DAILY
+    DAILY --> LAB --> REP
+    DAILY --> PAPER --> LEDGER
+    PAPER --> EXPORT --> TARGET --> LOOP --> ENGINE
+    ENGINE <--> CLIENT
+    ENGINE --> AUDIT --> READ
 ```
 
 Thành phần:
@@ -76,7 +81,7 @@ Thành phần:
 - `execution/contracts.py`: trần vốn đóng băng bằng sha256 của file ceilings; live = 0.
 - `gate_report.py`, `status.py`, `reconcile_paper_vs_testnet.py`: chỉ đọc, không đụng sàn.
 
-Không có LLM trong pipeline; mục retrieval/generation/guardrail của template bỏ. Vai trò tương đương guardrail ở đây là: nghiên cứu chỉ được ghi vào file target, engine đọc target và quyết định độc lập bằng code (drift gate, min-notional, kill-switch, verifier).
+Code chặn giữa hai tầng: nghiên cứu chỉ được ghi vào file target, engine đọc target và quyết định độc lập bằng code (drift gate, min-notional, kill-switch, verifier).
 
 ## Công nghệ sử dụng
 
@@ -241,8 +246,10 @@ RESEARCH_PREREG_Q4_2026.md  ba cell tháng 10, khóa trước khi chạy
 ## Ghi nhận và giấy phép
 
 - Dữ liệu: Binance USDT-M Futures public REST và data.binance.vision; Bybit v5 và OKX public API cho kiểm tra cross-exchange. Không dùng dữ liệu trả phí.
-- Thư viện: pandas, numpy, pyarrow, requests, scikit-learn, XGBoost, joblib, pytest.
 - Không có model gốc bên ngoài; model 15m cũ tự train và đã archive.
+- Thư viện: pandas, numpy, pyarrow, requests, scikit-learn, XGBoost, joblib, pytest.
 - Giấy phép: MIT, xem file `LICENSE`.
 
 Repo phục vụ nghiên cứu. Funding carry vẫn lỗ nặng được khi thị trường squeeze; ai bật live tự chịu trách nhiệm.
+
+Trịnh Ngọc Minh Nhật
