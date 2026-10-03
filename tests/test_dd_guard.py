@@ -201,7 +201,9 @@ def test_failed_rename_leaves_old_mark_intact_and_is_a_plan_refusal(monkeypatch,
     assert path.read_text(encoding="utf-8") == before
     assert h["c"].orders == []
     assert "PLAN_REFUSED" in daily.LOG.read_text(encoding="utf-8")
-    assert json.loads(daily.ATTENTION.read_text(encoding="utf-8"))["reason"] == "plan_refused"
+    # nothing placed -> NOTICE (informs), not ATTENTION (blocks): see the 2026-09-28 incident
+    assert json.loads((daily.ATTENTION.parent / "NOTICE").read_text(encoding="utf-8"))["reason"] == "plan_refused"
+    assert not daily.ATTENTION.exists()
 
 
 def test_account_read_failure_uses_existing_pre_plan_refusal_path(monkeypatch, tmp_path):
@@ -220,8 +222,9 @@ def test_account_read_failure_uses_existing_pre_plan_refusal_path(monkeypatch, t
     assert daily.main() == 5
     assert h["c"].orders == []
     assert not daily._hwm_path(daily.ENVIRONMENT).exists()
-    marker = json.loads(daily.ATTENTION.read_text(encoding="utf-8"))
-    assert marker["reason"] == "plan_refused" and "503" in marker["error"]
+    marker = json.loads((daily.ATTENTION.parent / "NOTICE").read_text(encoding="utf-8"))
+    assert marker["reason"] == "plan_refused" and "503" in marker["error"] and marker["blocking"] is False
+    assert not daily.ATTENTION.exists()
     assert "PLAN_REFUSED" in daily.LOG.read_text(encoding="utf-8")
 
 

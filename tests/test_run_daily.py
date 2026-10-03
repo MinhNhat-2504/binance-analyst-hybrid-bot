@@ -120,3 +120,23 @@ def test_healthcheck_flags_marker_stale_lock_and_quiet_ledger(tmp_path):
     (tmp_path / "carry_paper_ledger.csv").write_text("signal_day,fill_day,pnl\n2026-09-01,2026-09-02,0.0\n", encoding="utf-8")
     later = datetime(2026, 9, 10, tzinfo=timezone.utc).timestamp()
     assert hc.problems(tmp_path, now=later) == ["paper ledger last booked 2026-09-02"]
+
+
+def test_notice_is_shown_as_information_not_as_a_block(tmp_path, monkeypatch):
+    import notify_markers as nm
+    monkeypatch.setattr(nm, "MARKERS", {"ATTENTION": tmp_path / "ATTENTION", "NOTICE": tmp_path / "NOTICE"})
+    (tmp_path / "NOTICE").write_text('{"reason": "plan_refused", "consecutive": 1}', encoding="utf-8")
+    text = nm.render(nm.present())
+    assert "[thong bao] .execution/NOTICE" in text
+    assert "van tu chay sang mai" in text and "KHONG chay lai" not in text
+    (tmp_path / "ATTENTION").write_text('{"reason": "run_needs_review"}', encoding="utf-8")
+    text = nm.render(nm.present())
+    assert "[CHAN] .execution/ATTENTION" in text and "KHONG chay lai" in text
+
+
+def test_healthcheck_flags_a_notice_only_once_it_recurs(tmp_path):
+    (tmp_path / ".execution").mkdir()
+    (tmp_path / ".execution" / "NOTICE").write_text('{"reason": "plan_refused", "consecutive": 2}', encoding="utf-8")
+    assert hc.problems(tmp_path) == []
+    (tmp_path / ".execution" / "NOTICE").write_text('{"reason": "plan_refused", "consecutive": 3}', encoding="utf-8")
+    assert hc.problems(tmp_path) == ["NOTICE plan_refused 3 days in a row"]

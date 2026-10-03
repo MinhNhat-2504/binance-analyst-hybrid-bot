@@ -39,10 +39,16 @@ Equity drawdown guard (the automatic form of the GO_LIVE_CHECKLIST.md stop rule)
   which reads equity, sets hwm = equity, and exits without placing anything.
 
 Outcomes:
-  * COMPLETE and reconcile exit 0  -> silent. One line appended to carry_testnet_log.csv.
-  * Anything else                  -> writes .execution/ATTENTION (a file whose mere presence
-                                      says "read the runbook"), appends to
-                                      carry_paper_incidents.md, exits non-zero.
+  * COMPLETE and reconcile exit 0  -> silent. One line appended to carry_testnet_log.csv;
+                                      a leftover NOTICE from an earlier refusal is removed.
+  * Refused before any order       -> writes .execution/NOTICE (not blocking), a log row, exit
+    (export failed, plan refused,      4 or 5. Tomorrow's run proceeds on its own. Nothing was
+     account unreadable)               placed, so there is no book for a human to review, and
+                                      blocking would only cost gate days: on 2026-09-28 one
+                                      SEIUSDT drift refusal blocked five clean mornings.
+  * Anything with possible exposure -> writes .execution/ATTENTION (blocking: the next run
+    (hand-off status, DD guard,        refuses until a human reads the runbook), appends to
+     lock held, crash)                 carry_paper_incidents.md, exits non-zero.
     Exit codes: 4 export failed, 5 plan refused / missed window, 6 run needs review,
     7 lock held, 8 drawdown guard halt.
 """
@@ -110,6 +116,11 @@ class LoopEnv:
     # time (testnet: the frozen file). Live passes its authorized budget, which may be
     # lower than the ceiling - the guard must protect the money actually at risk.
     guard_budget_usd: float | None = None
+
+    @property
+    def notice(self) -> Path:
+        """Non-blocking marker beside the blocking one (see module docstring, Outcomes)."""
+        return self.attention.parent / "NOTICE"
 
 
 def _testnet_env() -> "LoopEnv":
@@ -217,6 +228,50 @@ def _attention(reason: str, detail: dict, env: "LoopEnv | None" = None) -> None:
                  f"_Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa `.execution/ATTENTION`._\n")
 
 
+NOTICE_ESCALATE_AFTER = 3   # consecutive refusals before the NOTICE says so loudly
+
+
+def _notice(reason: str, detail: dict, env: "LoopEnv | None" = None) -> int:
+    """Record a refusal that placed nothing. Never blocks the next run.
+
+    Counts consecutive refusals so a refusal that recurs every morning (a real config
+    problem rather than one fast market) is visible as such in status.py and on the
+    Desktop flag, without turning a no-orders event into a blocked loop.
+    """
+    env = env or _testnet_env()
+    prior = 0
+    if env.notice.exists():
+        try:
+            prior = int(json.loads(env.notice.read_text(encoding="utf-8")).get("consecutive", 0))
+        except (ValueError, OSError):
+            prior = 0
+    consecutive = prior + 1
+    env.notice.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"utc": _now(), "reason": reason, "consecutive": consecutive, "blocking": False,
+               "note": "no orders were placed; the next scheduled run proceeds automatically"
+                       + (f". {consecutive} refusals in a row - check the reason, it is recurring"
+                          if consecutive >= NOTICE_ESCALATE_AFTER else ""),
+               **detail}
+    # Best effort: a NOTICE informs, it must never be the thing that crashes a refusal
+    # path (the disk-full case is exactly when the atomic rename fails too).
+    try:
+        _write_json_atomic(env.notice, payload)
+    except OSError:
+        try:
+            env.notice.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        except OSError:
+            pass
+    return consecutive
+
+
+def _clear_notice(env: "LoopEnv | None" = None) -> None:
+    env = env or _testnet_env()
+    try:
+        env.notice.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def _refuse_unless_testnet_only() -> None:
     """Both locks. Fail loud, not silent, so a wrong deployment cannot look like 'ran fine'."""
     ceilings, _ = load_ceilings()
@@ -308,9 +363,10 @@ def _main(env: "LoopEnv | None" = None) -> int:
 
 
 def _plan_refused(started: str, book: Any, exc: BaseException, env: "LoopEnv | None" = None) -> int:
-    """Any refusal before the kill switch is released: nothing placed, marker + log row."""
-    _attention("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"}, env)
+    """Any refusal before the kill switch is released: nothing placed -> NOTICE + log row, not blocking."""
+    n = _notice("plan_refused", {"target_id": book.target_id, "error": f"{type(exc).__name__}: {exc}"}, env)
     _log({"utc": started, "target_id": book.target_id, "status": "PLAN_REFUSED", "detail": str(exc)[:200]}, env)
+    print(f"plan refused, nothing placed (NOTICE, not blocking; {n} in a row): {exc}")
     return 5
 
 
@@ -321,7 +377,8 @@ def _run(env: "LoopEnv | None" = None) -> int:
     # 1. Fresh targets from today's paper state (deterministic; safe to re-run).
     exp = subprocess.run([PYTHON, "-B", str(ROOT / "export_carry_targets.py")], capture_output=True, text=True, cwd=ROOT, timeout=900)
     if exp.returncode != 0:
-        _attention("export_targets_failed", {"stdout": exp.stdout[-2000:], "stderr": exp.stderr[-2000:]}, env)
+        _notice("export_targets_failed", {"stdout": exp.stdout[-2000:], "stderr": exp.stderr[-2000:]}, env)
+        _log({"utc": started, "target_id": "", "status": "EXPORT_FAILED", "detail": (exp.stderr or exp.stdout)[-200:]}, env)
         return 4
     book = load_target_book(env.targets)
 
@@ -401,6 +458,7 @@ def _run(env: "LoopEnv | None" = None) -> int:
           "plan_legs": len(plan.get("legs", [])), "plan_skips": len(plan.get("skips", []))}, env)
 
     if status == "COMPLETE" and rec.returncode == 0:
+        _clear_notice(env)
         return 0
     _attention("run_needs_review", {
         "target_id": book.target_id, "engine_status": status, "engine_detail": detail,

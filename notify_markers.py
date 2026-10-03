@@ -26,7 +26,10 @@ MARKERS = {
     "ATTENTION": ROOT / ".execution" / "ATTENTION",
     "canary_ALERT": ROOT / ".execution" / "canary_ALERT",
     "testnet_daily.lock": ROOT / ".execution" / "testnet_daily.lock",
+    "NOTICE": ROOT / ".execution" / "NOTICE",
 }
+# Only these stop the loop. NOTICE and canary_ALERT inform; the loop keeps running.
+BLOCKING = ("ATTENTION", "testnet_daily.lock")
 FLAG_NAME = "BINANCE BOT - CAN XEM.txt"
 
 
@@ -59,12 +62,16 @@ def render(found: dict[str, str]) -> str:
     lines = [
         f"BINANCE BOT dang cho ban xem  ({now})",
         "",
-        "Vong lap testnet se KHONG chay lai cho toi khi marker duoi day duoc xu ly.",
-        "Moi ngay bi chan la mot ngay mat cho cong 20 lan COMPLETE.",
-        "",
     ]
+    if any(n in found for n in BLOCKING):
+        lines += ["Vong lap testnet se KHONG chay lai cho toi khi marker CHAN duoi day duoc xu ly.",
+                  "Moi ngay bi chan la mot ngay mat cho cong 20 lan COMPLETE.", ""]
+    else:
+        lines += ["Chi la thong bao: vong lap van tu chay sang mai, khong can lam gi ngay.",
+                  "Neu cung mot ly do lap lai 3 ngay lien tiep thi nen xem.", ""]
     for name, why in found.items():
-        lines.append(f"  .execution/{name}: {why}")
+        tag = "CHAN" if name in BLOCKING else "thong bao"
+        lines.append(f"  [{tag}] .execution/{name}: {why}")
     lines += [
         "",
         "Lam gi: doc EXECUTION_RUNBOOK.md (muc 'Doc status - va lam gi'), ghi quyet dinh vao",

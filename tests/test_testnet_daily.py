@@ -163,3 +163,53 @@ def test_stale_target_is_a_missed_window_not_an_incident(monkeypatch, tmp_path):
     assert daily.main() == 5
     assert not daily.ATTENTION.exists()
     assert "MISSED_WINDOW" in daily.LOG.read_text(encoding="utf-8")
+
+
+def test_plan_refusal_places_nothing_and_does_not_block_the_next_morning(monkeypatch, tmp_path):
+    """2026-09-28: one SEIUSDT drift refusal (nothing placed) wrote ATTENTION and blocked five
+    clean mornings. A refusal before any order is a NOTICE: logged, visible, not blocking."""
+    from execution.engine import TestnetExecutor
+    from test_execution import TrackingClient
+    calls = _wire(monkeypatch, tmp_path, TrackingClient)
+    real_fresh = TestnetExecutor.assert_target_fresh
+    monkeypatch.setattr(TestnetExecutor, "assert_target_fresh",
+                        lambda self, book: (_ for _ in ()).throw(RuntimeError("SEIUSDT: frozen reference drift 356.83bps exceeds per-symbol limit 300.00bps")))
+    assert daily.main() == 5
+    notice = json.loads((tmp_path / ".execution" / "NOTICE").read_text(encoding="utf-8"))
+    assert notice["reason"] == "plan_refused" and notice["consecutive"] == 1 and notice["blocking"] is False
+    assert not daily.ATTENTION.exists(), "no orders were placed: nothing for a human to review"
+    assert "PLAN_REFUSED" in daily.LOG.read_text(encoding="utf-8")
+
+    # second refusal the next morning: counted, still not blocking
+    assert daily.main() == 5
+    assert json.loads((tmp_path / ".execution" / "NOTICE").read_text(encoding="utf-8"))["consecutive"] == 2
+
+    # third morning the market is calm: the loop runs, COMPLETE clears the NOTICE
+    monkeypatch.setattr(TestnetExecutor, "assert_target_fresh", real_fresh)
+    assert daily.main() == 0
+    assert not (tmp_path / ".execution" / "NOTICE").exists()
+    assert "COMPLETE" in daily.LOG.read_text(encoding="utf-8")
+
+
+def test_export_failure_is_a_notice_not_a_block(monkeypatch, tmp_path):
+    from test_execution import TrackingClient
+    _wire(monkeypatch, tmp_path, TrackingClient)
+
+    class Proc:
+        returncode, stdout, stderr = 1, "", "paper state unreadable"
+
+    monkeypatch.setattr(daily.subprocess, "run", lambda cmd, **kw: Proc())
+    assert daily.main() == 4
+    assert json.loads((tmp_path / ".execution" / "NOTICE").read_text(encoding="utf-8"))["reason"] == "export_targets_failed"
+    assert not daily.ATTENTION.exists()
+    assert "EXPORT_FAILED" in daily.LOG.read_text(encoding="utf-8")
+
+
+def test_exposure_paths_still_block(monkeypatch, tmp_path):
+    """The split must not leak: a hand-off status (possible exposure) is still ATTENTION."""
+    calls = _wire(monkeypatch, tmp_path, lambda: __import__("test_execution").TrackingClient())
+    calls["reconcile_rc"] = 3
+    assert daily.main() == 6
+    assert daily.ATTENTION.exists()
+    with pytest.raises(SystemExit, match="ATTENTION"):
+        daily.main()

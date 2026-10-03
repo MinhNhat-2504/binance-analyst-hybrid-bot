@@ -79,10 +79,16 @@ def _live():
 
 def _markers():
     ex = ROOT / ".execution"
-    found = [p.name for p in ex.glob("*") if p.name in ("ATTENTION", "canary_ALERT", "testnet_daily.lock")]
+    found = [p.name for p in ex.glob("*") if p.name in ("ATTENTION", "canary_ALERT", "testnet_daily.lock", "NOTICE")]
     if not found:
         return "  markers none - next scheduled run will proceed"
-    blocking = [f for f in found if f != "canary_ALERT"]
+    blocking = [f for f in found if f in ("ATTENTION", "testnet_daily.lock")]
+    if "NOTICE" in found:
+        try:
+            n = json.loads((ex / "NOTICE").read_text(encoding="utf-8"))
+            found[found.index("NOTICE")] = f"NOTICE({n.get('reason')}, {n.get('consecutive')} in a row)"
+        except (ValueError, OSError):
+            pass
     note = "runs BLOCKED until resolved" if blocking else "informational - runs continue"
     return "  MARKERS PRESENT -> " + ", ".join(found) + f"   ({note}; see EXECUTION_RUNBOOK.md)"
 

@@ -116,3 +116,33 @@ Bài học đúng kiểu repo này: một tiêu chí kill viết đúng vẫn c�
 ## Danh sách chờ cho pre-reg Q1/2027 (ghi 26/09/2026, KHÔNG chạy trong Q4)
 
 - **Short-only + hedge BTC.** Tách chân 600 ngày (`analyze_backtest_legs.py`) cho thấy chân short là toàn bộ edge, chân long lỗ 7 đến 15%/năm và chỉ giữ beta. Câu hỏi: thay rổ long crowded-short bằng hedge BTC (beta rổ short, OLS 90 ngày) có giữ được Sharpe mà bỏ được cái giá đó không. Grid, null, luật quyết định sẽ viết khi đăng ký Q1; ghi ở đây để ý tưởng có ngày tháng và không bị "phát hiện lại" sau khi xem thêm dữ liệu.
+
+---
+
+## Kết quả (chạy 01/10/2026, đúng ngày đăng ký)
+
+### Cell 1, CARRY-7d-HYST: **ĐÓNG theo luật của chính nó**
+
+Bài kiểm rẻ trên discovery, h=0.10, đúng như đăng ký:
+
+| | v1 | v2 h=0.10 |
+|---|---:|---:|
+| Turnover/ngày | 0.291 | 0.229 (**0.79×**) |
+| Đổi thành viên/ngày | 4.96 | 3.56 |
+| Số tên trong rổ | 16.8 | 20.2 |
+| Sharpe @10bps | 1.78 | 2.14 |
+| Lãi ròng @10bps | +32.8%/năm | +35.6% (**+2.8 điểm**) |
+| Lãi ròng @20bps | | **+5.1 điểm** |
+
+Tiêu chí giết đã ghi trước: *"turnover giảm < 25% ở h=0.10"*. Turnover chỉ giảm 21%. **Cell chết.** Không chạy h=0.05, không chạy hold-out, không chạy null.
+
+Kết quả này khó chịu, và phải nói thẳng vì sao vẫn tuân thủ: lãi ròng tăng 2.8 điểm vượt ngưỡng (b) +2.0 điểm, Sharpe tăng. Số lần đổi tên giảm 28% đúng như giả thuyết, nhưng rổ phình từ 17 lên 20 tên nên phần cân lại weight ăn bớt tiết kiệm, đúng rủi ro đã ghi trước ở mục "ràng buộc vốn". Luật đặt ngưỡng turnover để loại trường hợp "không có gì để thu"; ở đây có thứ để thu, nhưng luật không có ngoại lệ, và tự đặt ngoại lệ sau khi thấy số đẹp chính là cơ chế đã tạo ra PF 2.69 giả. Ghi lại như một phát hiện, không phải ứng viên. Đường sạch duy nhất nếu muốn dùng nó: chạy v2 như paper bóng trên dữ liệu **từ nay trở đi** (dữ liệu chưa ai nhìn), đăng ký trong một quý sau. Ở $2,000 nó vẫn không triển khai được (rổ 20 tên đẩy sàn vốn lên ~$3,000).
+
+### Ghi chú robustness: loại 6 đồng funding 4h
+
+| Discovery, 600 ngày, 10bps | Sharpe | Lãi/năm |
+|---|---:|---:|
+| Toàn bộ 42 tên | 1.78 | +32.9% |
+| Bỏ ENA, JTO, ORDI, PYTH, TAO, TIA | **2.17** | +34.9% |
+
+Câu hỏi đăng ký là "CARRY-7d có sống sót khi loại nhóm 4h không": **có**, edge không dựa vào nhóm đó. Nhưng **không được** dùng con số 2.17 để đổi universe: danh sách 4h là phân loại của *hôm nay* áp ngược lên 600 ngày (các đồng này chuyển sang 4h vào những thời điểm khác nhau), tức là dùng thông tin tương lai. Config vẫn khóa, universe giữ nguyên.

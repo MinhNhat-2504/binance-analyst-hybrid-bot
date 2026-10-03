@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-09-25",
+  "as_of": "2026-10-01",
   "four_hour_symbols": {
     "IMXUSDT": 4,
     "ENJUSDT": 4,
@@ -33,46 +33,70 @@
     "ZILUSDT"
   ],
   "ledger": {
-    "days": 52,
+    "days": 58,
     "days_with_any_4h_name_pct": 100.0,
-    "share_of_book_slots_pct": 17.9,
+    "share_of_book_slots_pct": 18.4,
     "per_symbol": {
       "ENAUSDT": {
         "interval_h": 4,
         "days_long": 4,
-        "days_short": 16,
-        "in_book_pct": 38.5
+        "days_short": 21,
+        "in_book_pct": 43.1
       },
       "JTOUSDT": {
         "interval_h": 4,
         "days_long": 4,
-        "days_short": 22,
-        "in_book_pct": 50.0
+        "days_short": 23,
+        "in_book_pct": 46.6
       },
       "ORDIUSDT": {
         "interval_h": 4,
         "days_long": 0,
-        "days_short": 31,
-        "in_book_pct": 59.6
+        "days_short": 35,
+        "in_book_pct": 60.3
       },
       "PYTHUSDT": {
         "interval_h": 4,
-        "days_long": 0,
+        "days_long": 2,
         "days_short": 33,
-        "in_book_pct": 63.5
+        "in_book_pct": 60.3
       },
       "TAOUSDT": {
         "interval_h": 4,
         "days_long": 0,
-        "days_short": 30,
-        "in_book_pct": 57.7
+        "days_short": 35,
+        "in_book_pct": 60.3
       },
       "TIAUSDT": {
         "interval_h": 4,
         "days_long": 2,
-        "days_short": 16,
-        "in_book_pct": 34.6
+        "days_short": 22,
+        "in_book_pct": 41.4
       }
     }
+  },
+  "backtest": {
+    "full": {
+      "n_symbols": 42,
+      "n_days": 592,
+      "sharpe": 1.783,
+      "ann_ret_pct": 32.85,
+      "max_dd_pct": -14.68,
+      "funding_share_pct": 26.2,
+      "worst_day_bps": -754.5,
+      "avg_daily_turnover": 0.2906
+    },
+    "without_4h": {
+      "n_symbols": 36,
+      "n_days": 592,
+      "sharpe": 2.172,
+      "ann_ret_pct": 34.87,
+      "max_dd_pct": -8.15,
+      "funding_share_pct": 20.4,
+      "worst_day_bps": -357.6,
+      "avg_daily_turnover": 0.2934
+    },
+    "delta_sharpe_without_4h": 0.389,
+    "delta_ann_ret_pct_without_4h": 2.02
   }
 }

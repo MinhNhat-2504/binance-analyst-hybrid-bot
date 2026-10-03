@@ -25,6 +25,15 @@ def problems(root: Path = ROOT, *, now: float | None = None) -> list[str]:
     out = []
     if (root / ".execution" / "ATTENTION").exists():
         out.append("ATTENTION marker present")
+    notice = root / ".execution" / "NOTICE"
+    if notice.exists():
+        try:
+            import json
+            n = json.loads(notice.read_text(encoding="utf-8"))
+            if int(n.get("consecutive", 0)) >= 3:
+                out.append(f"NOTICE {n.get('reason')} {n.get('consecutive')} days in a row")
+        except (ValueError, OSError):
+            pass
     lock = root / ".execution" / "testnet_daily.lock"
     if lock.exists() and now - lock.stat().st_mtime > 2 * 3600:
         out.append("testnet_daily.lock older than 2h")

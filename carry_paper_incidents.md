@@ -78,3 +78,18 @@ Ba lỗi chồng nhau, sửa cả ba (`execution/binance_futures.py`, `execution
 Bài học vận hành đắt nhất không phải code: marker ATTENTION nằm trong thư mục ẩn và **không ai nhìn suốt 20 ngày**, mất 20 ngày testnet trong đúng tháng cần 20 lần COMPLETE. Từ giờ task paper mỗi sáng chạy `notify_markers.py`: có marker là có file `BINANCE BOT - CAN XEM.txt` trên Desktop, hết marker file tự biến mất. Marker đã xóa; runs tiếp tục từ 26/09 07:20 — ngày đầu sẽ là dựng lại cả rổ từ 0 (~34 chân).
 
 **Canary (xem cùng lúc):** 06/09 báo ALERT (Binance +0.84 so với Bybit +1.11); 13/09 và 20/09 hết ALERT theo luật nhưng khoảng cách tiếp tục âm (−0.28, −0.41): trên cửa sổ 180 ngày, Sharpe theo weight Binance tụt 1.60 → 1.02 còn theo weight Bybit tăng 1.35 → 1.43. Đọc thẳng: chưa phải bằng chứng edge Binance mất, vì paper (dùng đúng weight Binance) đang +8.14% ở ngày 52; 180 ngày trộn cả mùa hè. Nhưng đây là điểm yếu đã đặt tên từ 16/08 và nó đang đi đúng hướng xấu. Quyết định: không có tiền thật nên không phải tiêu chí dừng; ghi nhận, giữ canary hằng tuần, `gate_report.py` vẫn đọc 4 dòng gần nhất. Marker `canary_ALERT` từ giờ phản ánh *tuần mới nhất* (tuần sạch tự xóa), lịch sử nằm trong `canary_log.csv`. Marker đã xóa.
+
+## 2026-09-28T00:21:41+00:00 — plan_refused
+
+```
+{
+  "target_id": "03e01c1373443c72bf237d08",
+  "error": "RuntimeError: SEIUSDT: frozen reference drift 356.83bps exceeds per-symbol limit 300.00bps"
+}
+```
+
+_Xử lý theo EXECUTION_RUNBOOK.md, ghi quyết định vào đây, rồi xóa `.execution/ATTENTION`._
+
+**Xử lý (2026-10-03, muộn 5 ngày):** Plan bị từ chối trước khi mở khóa: SEIUSDT chạy 356 bps giữa giá tham chiếu paper (00:00 UTC) và giá lúc chạy (00:20), vượt ngưỡng 300 bps của drift gate. **Không lệnh nào được đặt**, sàn giữ nguyên rổ của run COMPLETE 26/09. Drift gate làm đúng việc. Lỗi là ở chỗ khác: một lần từ chối không đặt lệnh lại ghi marker ATTENTION, và marker đó chặn năm buổi sáng sạch (29/09 tới 03/10), đúng kiểu hỏng của tháng 9.
+
+Sửa trong `run_carry_testnet_daily.py`: tách hai loại marker. ATTENTION (chặn) chỉ còn cho những gì có thể để lại vị thế lệch trên sàn: trạng thái hand-off sau khi đã đặt lệnh, DD guard, lock kẹt, crash, không bật lại được kill-switch. Từ chối trước khi đặt lệnh (plan refused, export thất bại, không đọc được tài khoản) giờ ghi `.execution/NOTICE`: không chặn, đếm số lần liên tiếp, hiện trên Desktop và `status.py`, tự xóa khi có ngày COMPLETE; healthcheck báo khi lặp 3 ngày liền. Ghi NOTICE là best-effort (test đĩa đầy bắt được lỗi crash ở đây). 5 test mới. Marker đã xóa; runs tiếp tục từ 04/10 07:20.

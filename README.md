@@ -208,7 +208,7 @@ Hạn chế đọc từ code:
 
 1. Bằng chứng cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, không phải áp đảo, và kỳ paper 60 hoặc 90 ngày về mặt thống kê không thể tự chứng minh edge (nửa CI ~24 bps ở 60 ngày). Paper chỉ kiểm được tracking, không kiểm được edge.
 2. Lãi paper tập trung và đến từ chân sai: một ngày chiếm 33.5% tổng, ba đồng long chiếm 45% lãi gộp, 21/39 đồng âm. Chân short, tức toàn bộ edge trong 600 ngày backtest, lỗ trên discovery từ 03/04/2026 đến nay. Chân long lịch sử lỗ 7 đến 15%/năm và chỉ là hedge; short-only + hedge BTC là ứng viên pre-reg Q1/2027, không chạy trước đó.
-3. Bằng chứng thực thi mỏng: 3 ngày testnet COMPLETE và 90 lệnh; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn.
+3. Bằng chứng thực thi mỏng: 4 ngày testnet COMPLETE; shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn, rồi thêm 5 ngày vì một lần drift gate từ chối (không đặt lệnh nào) cũng ghi marker chặn. Từ 03/10 chỉ trạng thái có thể có vị thế lệch mới chặn; từ chối trước khi đặt lệnh chỉ ghi NOTICE.
 4. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
 5. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
 6. Vòng live không người trực (`run_carry_live_daily.py`) đã viết và test bằng sàn giả, nhưng chưa từng chạy một ngày thật; tháng đầu live vẫn là chạy tay theo checklist, và file ủy quyền `unattended_live_v1.json` chỉ được viết sau đó.
@@ -219,7 +219,7 @@ Hạn chế đọc từ code:
 Việc làm tiếp, theo thứ tự:
 
 1. Đủ 20 ngày testnet COMPLETE trước mốc ngày 90 (01/11/2026) để cổng chấm được phần thực thi; mọi thứ khác phụ thuộc vào đây.
-2. Chạy ba cell Q4 đã đăng ký từ 01/10 (hysteresis cho carry, low-vol cross-section có hedge beta, phân kỳ top-trader với đám đông) trên dữ liệu `honest/metrics.py` đã cache.
+2. Chạy hai cell Q4 còn lại (low-vol cross-section có hedge beta, phân kỳ top-trader với đám đông) trên dữ liệu `honest/metrics.py` đã cache. Cell hysteresis đã chạy 01/10 và đóng theo luật đăng ký (turnover chỉ giảm 21%, ngưỡng 25%) dù lãi ròng tăng 2.8 điểm; xem `RESEARCH_PREREG_Q4_2026.md`.
 3. Đo lệch do 6 symbol trả funding mỗi 4h (hạn chế 8) trên chính ledger paper, để biết nó ăn bao nhiêu bps khi lên live.
 
 ## Cấu trúc thư mục
