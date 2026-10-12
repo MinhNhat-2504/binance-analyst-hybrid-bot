@@ -32,7 +32,8 @@ def test_chain_continues_after_a_failing_step_and_reports_first_error(repo, monk
     monkeypatch.setattr(rd, "run_step", fake_step)
     monkeypatch.setattr(rd, "write_status", lambda *, root: (calls.append("status"), 0)[1])
     rc = rd.run_stage("testnet", root=repo)
-    assert calls == ["testnet", "live", "status", "notify"], "a MISSED_WINDOW must not stop the live loop, status or notify"
+    assert calls == ["testnet", "live", "fills", "tracking", "status", "notify"], \
+        "a MISSED_WINDOW must not stop the live loop, the evidence refresh, status or notify"
     assert rc == 5
 
 
@@ -140,3 +141,70 @@ def test_healthcheck_flags_a_notice_only_once_it_recurs(tmp_path):
     assert hc.problems(tmp_path) == []
     (tmp_path / ".execution" / "NOTICE").write_text('{"reason": "plan_refused", "consecutive": 3}', encoding="utf-8")
     assert hc.problems(tmp_path) == ["NOTICE plan_refused 3 days in a row"]
+
+
+def test_inert_live_loop_exit_2_is_a_normal_day_not_a_stage_failure(repo, monkeypatch):
+    """Until live is armed the live loop exits 2 every morning. That is the design, so the
+    stage must report 0 - otherwise every healthy day logs 'testnet: exit 2'."""
+    monkeypatch.setattr(rd, "run_step", lambda label, args, log_name, *, cwd: 2 if label == "live" else 0)
+    monkeypatch.setattr(rd, "write_status", lambda *, root: 0)
+    assert rd.run_stage("testnet", root=repo) == 0
+    # a live loop that fails for a real reason (6 = needs review) still surfaces
+    monkeypatch.setattr(rd, "run_step", lambda label, args, log_name, *, cwd: 6 if label == "live" else 0)
+    assert rd.run_stage("testnet", root=repo) == 6
+
+
+def test_testnet_waits_for_an_overrunning_paper_stage_then_proceeds(repo, monkeypatch):
+    """2026-10-11: paper was still running at 07:20 (the laptop slept in the middle of it)."""
+    marker = repo / rd.PAPER_RUNNING
+    marker.write_text("{}", encoding="utf-8")
+    ticks = []
+
+    def fake_sleep(seconds):
+        ticks.append(seconds)
+        if len(ticks) == 3:
+            marker.unlink()                      # paper finishes after 15 seconds
+
+    assert rd.wait_for_paper(repo, sleep=fake_sleep) == 15.0
+    assert not marker.exists()
+
+
+def test_a_dead_paper_marker_does_not_hold_the_testnet_stage_forever(repo):
+    marker = repo / rd.PAPER_RUNNING
+    marker.write_text("{}", encoding="utf-8")
+    slept = []
+    future = marker.stat().st_mtime + rd.PAPER_MARKER_STALE_SECONDS + 1
+    assert rd.wait_for_paper(repo, sleep=slept.append, now=lambda: future) == 0.0
+    assert slept == []
+    # and a live-looking marker is abandoned at the timeout rather than blocking the day
+    waited = rd.wait_for_paper(repo, timeout=20, sleep=slept.append, now=lambda: marker.stat().st_mtime)
+    assert waited == 20.0
+
+
+def test_paper_stage_sets_and_always_clears_its_running_marker(repo, monkeypatch):
+    seen = {}
+
+    def fake_step(label, args, log_name, *, cwd):
+        seen.setdefault("marker_during", (repo / rd.PAPER_RUNNING).exists())
+        if label == "snapshots":
+            raise RuntimeError("boom")
+        return 0
+
+    monkeypatch.setattr(rd, "run_step", fake_step)
+    with pytest.raises(RuntimeError):
+        rd.run_stage("paper", root=repo)
+    assert seen["marker_during"] is True
+    assert not (repo / rd.PAPER_RUNNING).exists(), "a crash must not leave the marker behind"
+
+
+def test_bat_files_do_not_share_a_redirect_target():
+    """cmd refuses a second writer on a redirect target; a shared log silently skips a stage."""
+    import re
+    from pathlib import Path
+    root = Path(rd.__file__).resolve().parent
+    targets = []
+    for bat in ("carry_paper_task.bat", "carry_testnet_task.bat", "canary_task.bat"):
+        m = re.search(r">>\s*(\S+)", (root / bat).read_text(encoding="utf-8"))
+        assert m, bat
+        targets.append(m.group(1))
+    assert len(set(targets)) == 3, targets

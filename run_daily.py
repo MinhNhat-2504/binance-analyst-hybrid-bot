@@ -20,15 +20,22 @@ directory is a bind mount, so the container is stateless and replaceable.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PY = sys.executable
 STATUS_FILE = ROOT / "status.txt"
+SUMMARY_LOG = "run_daily_task.log"
+PAPER_RUNNING = ".execution/paper_stage.running"
+PAPER_WAIT_SECONDS = 900          # testnet waits this long for an overrunning paper stage
+PAPER_MARKER_STALE_SECONDS = 3600  # a marker older than this is a dead process, not a running one
 DESKTOP_STATUS_NAME = "BINANCE BOT - TINH TRANG.txt"
 
 STAGES: dict[str, list[tuple[str, list[str], str]]] = {
@@ -46,6 +53,10 @@ STAGES: dict[str, list[tuple[str, list[str], str]]] = {
     "testnet": [
         ("testnet", ["-B", "run_carry_testnet_daily.py"], "carry_testnet_task.log"),
         ("live", ["-B", "run_carry_live_daily.py"], "carry_live_task.log"),
+        # Evidence the gate reads. Both are read-only and idempotent; without them the gate
+        # judged tracking and fill quality on three days from August for six weeks.
+        ("fills", ["analyze_execution_quality.py"], "evidence_task.log"),
+        ("tracking", ["track_paper_vs_testnet.py"], "evidence_task.log"),
         ("status", ["run_daily.py", "status"], "status_task.log"),
         ("notify", ["notify_markers.py"], "notify_markers_task.log"),
     ],
@@ -54,6 +65,12 @@ STAGES: dict[str, list[tuple[str, list[str], str]]] = {
         ("notify", ["notify_markers.py"], "notify_markers_task.log"),
     ],
 }
+
+
+# Exit codes that are a normal day, not a failure. The live loop exits 2 until it is armed
+# (ceilings v2 + hand-written authorization); reporting that as the stage's exit code made
+# every healthy morning look like "testnet: exit 2" in the scheduler log.
+EXPECTED_EXITS = {("live", 2)}
 
 
 def _stamp() -> str:
@@ -93,9 +110,72 @@ def write_status(*, root: Path = ROOT) -> int:
     return proc.returncode
 
 
+def keep_awake() -> None:
+    """Windows: hold a SYSTEM_REQUIRED power request for the life of this process.
+
+    2026-10-11: the wake timer woke the laptop at 07:19:47 for the 07:20 run and the system
+    idled back to sleep at 07:24:44, mid-run ("Sleep Reason: System Idle"). A timer wake has
+    no user present, so Windows applies a short unattended idle timeout unless something
+    says work is in progress. This says so. It cannot stop an explicit sleep (lid, Start
+    menu); nothing can.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+    except Exception:  # noqa: BLE001 - a courtesy to the OS, never a reason to skip the day
+        pass
+
+
+def _paper_marker(root: Path) -> Path:
+    return root / PAPER_RUNNING
+
+
+def wait_for_paper(root: Path = ROOT, *, timeout: float = PAPER_WAIT_SECONDS, sleep=time.sleep,
+                   now=time.time) -> float:
+    """Block while the paper stage is still running; return the seconds waited.
+
+    The testnet loop exports targets from the paper state. If the paper stage overran its
+    15 minutes (slow network, or the machine slept in the middle of it), starting on a
+    half-written state would be refused at best. A marker older than an hour belongs to a
+    process that died and is ignored.
+    """
+    marker = _paper_marker(root)
+    waited = 0.0
+    while marker.exists() and waited < timeout:
+        try:
+            if now() - marker.stat().st_mtime > PAPER_MARKER_STALE_SECONDS:
+                break
+        except OSError:
+            break
+        sleep(5.0)
+        waited += 5.0
+    return waited
+
+
 def run_stage(stage: str, *, root: Path = ROOT) -> int:
     if stage == "status":
         return write_status(root=root)
+    keep_awake()
+    marker = _paper_marker(root)
+    if stage == "paper":
+        marker.parent.mkdir(exist_ok=True)
+        marker.write_text(json.dumps({"pid": os.getpid(), "started_utc": _stamp()}), encoding="utf-8")
+    elif stage == "testnet":
+        wait_for_paper(root)
+    try:
+        return _run_steps(stage, root)
+    finally:
+        if stage == "paper":
+            try:
+                marker.unlink()
+            except OSError:
+                pass
+
+
+def _run_steps(stage: str, root: Path) -> int:
     first_error = 0
     for label, args, log_name in STAGES[stage]:
         if label == "status":
@@ -104,6 +184,8 @@ def run_stage(stage: str, *, root: Path = ROOT) -> int:
             rc = run_step(label, args, log_name, cwd=root)
         if label == "canary":
             canary_marker(rc, root=root)
+        if (label, rc) in EXPECTED_EXITS:
+            rc = 0
         if rc and not first_error:
             first_error = rc
     return first_error
@@ -114,7 +196,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("stage", choices=[*STAGES, "status"])
     args = ap.parse_args(argv)
     rc = run_stage(args.stage)
-    print(f"{_stamp()} {args.stage}: exit {rc}")
+    line = f"{_stamp()} {args.stage}: exit {rc}"
+    print(line)
+    if args.stage != "status":
+        # Written from Python, not by the .bat redirect: cmd opens a redirect target without
+        # write sharing, so two stages redirecting to one file meant the second never started
+        # ("being used by another process"). That silently cost the 2026-10-11 testnet run.
+        try:
+            with (ROOT / SUMMARY_LOG).open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except OSError:
+            pass
     return rc
 
 
