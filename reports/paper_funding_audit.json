@@ -1,0 +1,476 @@
+{
+  "status": "complete",
+  "audited_days": 77,
+  "ledger_days": 77,
+  "first_audited_day": "2026-08-03",
+  "last_audited_day": "2026-10-18",
+  "funding_correction_bps_sum": -0.7,
+  "recorded_return_pct": 10.894,
+  "corrected_return_pct": 10.8862,
+  "missing_days": [],
+  "daily": [
+    {
+      "fill_day": "2026-08-03",
+      "recorded_pnl_bps": 65.56,
+      "funding_correction_bps": 0.053,
+      "corrected_pnl_bps": 65.613
+    },
+    {
+      "fill_day": "2026-08-04",
+      "recorded_pnl_bps": -45.18,
+      "funding_correction_bps": 0.004,
+      "corrected_pnl_bps": -45.176
+    },
+    {
+      "fill_day": "2026-08-05",
+      "recorded_pnl_bps": 11.02,
+      "funding_correction_bps": 0.101,
+      "corrected_pnl_bps": 11.121
+    },
+    {
+      "fill_day": "2026-08-06",
+      "recorded_pnl_bps": -53.6,
+      "funding_correction_bps": -0.159,
+      "corrected_pnl_bps": -53.759
+    },
+    {
+      "fill_day": "2026-08-07",
+      "recorded_pnl_bps": 68.08,
+      "funding_correction_bps": -0.087,
+      "corrected_pnl_bps": 67.993
+    },
+    {
+      "fill_day": "2026-08-08",
+      "recorded_pnl_bps": -45.74,
+      "funding_correction_bps": -0.02,
+      "corrected_pnl_bps": -45.76
+    },
+    {
+      "fill_day": "2026-08-09",
+      "recorded_pnl_bps": -9.9,
+      "funding_correction_bps": -0.047,
+      "corrected_pnl_bps": -9.947
+    },
+    {
+      "fill_day": "2026-08-10",
+      "recorded_pnl_bps": -31.3,
+      "funding_correction_bps": -0.089,
+      "corrected_pnl_bps": -31.389
+    },
+    {
+      "fill_day": "2026-08-11",
+      "recorded_pnl_bps": 19.16,
+      "funding_correction_bps": 0.04,
+      "corrected_pnl_bps": 19.2
+    },
+    {
+      "fill_day": "2026-08-12",
+      "recorded_pnl_bps": 26.92,
+      "funding_correction_bps": 0.16,
+      "corrected_pnl_bps": 27.08
+    },
+    {
+      "fill_day": "2026-08-13",
+      "recorded_pnl_bps": 27.3,
+      "funding_correction_bps": 0.087,
+      "corrected_pnl_bps": 27.387
+    },
+    {
+      "fill_day": "2026-08-14",
+      "recorded_pnl_bps": 14.1,
+      "funding_correction_bps": -0.121,
+      "corrected_pnl_bps": 13.979
+    },
+    {
+      "fill_day": "2026-08-15",
+      "recorded_pnl_bps": -65.44,
+      "funding_correction_bps": 0.041,
+      "corrected_pnl_bps": -65.399
+    },
+    {
+      "fill_day": "2026-08-16",
+      "recorded_pnl_bps": -28.06,
+      "funding_correction_bps": -0.043,
+      "corrected_pnl_bps": -28.103
+    },
+    {
+      "fill_day": "2026-08-17",
+      "recorded_pnl_bps": -9.64,
+      "funding_correction_bps": -0.029,
+      "corrected_pnl_bps": -9.669
+    },
+    {
+      "fill_day": "2026-08-18",
+      "recorded_pnl_bps": 31.67,
+      "funding_correction_bps": 0.0,
+      "corrected_pnl_bps": 31.67
+    },
+    {
+      "fill_day": "2026-08-19",
+      "recorded_pnl_bps": 109.49,
+      "funding_correction_bps": -0.056,
+      "corrected_pnl_bps": 109.434
+    },
+    {
+      "fill_day": "2026-08-20",
+      "recorded_pnl_bps": -20.03,
+      "funding_correction_bps": 0.032,
+      "corrected_pnl_bps": -19.998
+    },
+    {
+      "fill_day": "2026-08-21",
+      "recorded_pnl_bps": 201.65,
+      "funding_correction_bps": -0.052,
+      "corrected_pnl_bps": 201.598
+    },
+    {
+      "fill_day": "2026-08-22",
+      "recorded_pnl_bps": -40.56,
+      "funding_correction_bps": -0.033,
+      "corrected_pnl_bps": -40.593
+    },
+    {
+      "fill_day": "2026-08-23",
+      "recorded_pnl_bps": 65.04,
+      "funding_correction_bps": -0.04,
+      "corrected_pnl_bps": 65.0
+    },
+    {
+      "fill_day": "2026-08-24",
+      "recorded_pnl_bps": -71.65,
+      "funding_correction_bps": 0.0,
+      "corrected_pnl_bps": -71.65
+    },
+    {
+      "fill_day": "2026-08-25",
+      "recorded_pnl_bps": -23.55,
+      "funding_correction_bps": -0.001,
+      "corrected_pnl_bps": -23.551
+    },
+    {
+      "fill_day": "2026-08-26",
+      "recorded_pnl_bps": -12.08,
+      "funding_correction_bps": -0.058,
+      "corrected_pnl_bps": -12.138
+    },
+    {
+      "fill_day": "2026-08-27",
+      "recorded_pnl_bps": -103.12,
+      "funding_correction_bps": -0.1,
+      "corrected_pnl_bps": -103.22
+    },
+    {
+      "fill_day": "2026-08-28",
+      "recorded_pnl_bps": -4.17,
+      "funding_correction_bps": -0.024,
+      "corrected_pnl_bps": -4.194
+    },
+    {
+      "fill_day": "2026-08-29",
+      "recorded_pnl_bps": 0.0,
+      "funding_correction_bps": -0.014,
+      "corrected_pnl_bps": -0.014
+    },
+    {
+      "fill_day": "2026-08-30",
+      "recorded_pnl_bps": -34.66,
+      "funding_correction_bps": -0.047,
+      "corrected_pnl_bps": -34.707
+    },
+    {
+      "fill_day": "2026-08-31",
+      "recorded_pnl_bps": 185.74,
+      "funding_correction_bps": -0.044,
+      "corrected_pnl_bps": 185.696
+    },
+    {
+      "fill_day": "2026-09-01",
+      "recorded_pnl_bps": -70.23,
+      "funding_correction_bps": 0.2,
+      "corrected_pnl_bps": -70.03
+    },
+    {
+      "fill_day": "2026-09-02",
+      "recorded_pnl_bps": 81.26,
+      "funding_correction_bps": 0.01,
+      "corrected_pnl_bps": 81.27
+    },
+    {
+      "fill_day": "2026-09-03",
+      "recorded_pnl_bps": -60.29,
+      "funding_correction_bps": -0.013,
+      "corrected_pnl_bps": -60.303
+    },
+    {
+      "fill_day": "2026-09-04",
+      "recorded_pnl_bps": 35.09,
+      "funding_correction_bps": -0.006,
+      "corrected_pnl_bps": 35.084
+    },
+    {
+      "fill_day": "2026-09-05",
+      "recorded_pnl_bps": -22.82,
+      "funding_correction_bps": 0.0,
+      "corrected_pnl_bps": -22.82
+    },
+    {
+      "fill_day": "2026-09-06",
+      "recorded_pnl_bps": 128.25,
+      "funding_correction_bps": -0.048,
+      "corrected_pnl_bps": 128.202
+    },
+    {
+      "fill_day": "2026-09-07",
+      "recorded_pnl_bps": 269.3,
+      "funding_correction_bps": 0.046,
+      "corrected_pnl_bps": 269.346
+    },
+    {
+      "fill_day": "2026-09-08",
+      "recorded_pnl_bps": 88.84,
+      "funding_correction_bps": -0.016,
+      "corrected_pnl_bps": 88.824
+    },
+    {
+      "fill_day": "2026-09-09",
+      "recorded_pnl_bps": 76.47,
+      "funding_correction_bps": 0.056,
+      "corrected_pnl_bps": 76.526
+    },
+    {
+      "fill_day": "2026-09-10",
+      "recorded_pnl_bps": -74.82,
+      "funding_correction_bps": -0.015,
+      "corrected_pnl_bps": -74.835
+    },
+    {
+      "fill_day": "2026-09-11",
+      "recorded_pnl_bps": 6.05,
+      "funding_correction_bps": -0.007,
+      "corrected_pnl_bps": 6.043
+    },
+    {
+      "fill_day": "2026-09-12",
+      "recorded_pnl_bps": -38.4,
+      "funding_correction_bps": -0.102,
+      "corrected_pnl_bps": -38.502
+    },
+    {
+      "fill_day": "2026-09-13",
+      "recorded_pnl_bps": -104.34,
+      "funding_correction_bps": 0.025,
+      "corrected_pnl_bps": -104.315
+    },
+    {
+      "fill_day": "2026-09-14",
+      "recorded_pnl_bps": -76.0,
+      "funding_correction_bps": -0.037,
+      "corrected_pnl_bps": -76.037
+    },
+    {
+      "fill_day": "2026-09-15",
+      "recorded_pnl_bps": 95.78,
+      "funding_correction_bps": -0.002,
+      "corrected_pnl_bps": 95.778
+    },
+    {
+      "fill_day": "2026-09-16",
+      "recorded_pnl_bps": 28.07,
+      "funding_correction_bps": 0.032,
+      "corrected_pnl_bps": 28.102
+    },
+    {
+      "fill_day": "2026-09-17",
+      "recorded_pnl_bps": -10.67,
+      "funding_correction_bps": -0.076,
+      "corrected_pnl_bps": -10.746
+    },
+    {
+      "fill_day": "2026-09-18",
+      "recorded_pnl_bps": 114.27,
+      "funding_correction_bps": 0.031,
+      "corrected_pnl_bps": 114.301
+    },
+    {
+      "fill_day": "2026-09-19",
+      "recorded_pnl_bps": -192.24,
+      "funding_correction_bps": 0.0,
+      "corrected_pnl_bps": -192.24
+    },
+    {
+      "fill_day": "2026-09-20",
+      "recorded_pnl_bps": 53.59,
+      "funding_correction_bps": -0.008,
+      "corrected_pnl_bps": 53.582
+    },
+    {
+      "fill_day": "2026-09-21",
+      "recorded_pnl_bps": -88.78,
+      "funding_correction_bps": 0.007,
+      "corrected_pnl_bps": -88.773
+    },
+    {
+      "fill_day": "2026-09-22",
+      "recorded_pnl_bps": 214.11,
+      "funding_correction_bps": 0.078,
+      "corrected_pnl_bps": 214.188
+    },
+    {
+      "fill_day": "2026-09-23",
+      "recorded_pnl_bps": 123.41,
+      "funding_correction_bps": 0.021,
+      "corrected_pnl_bps": 123.431
+    },
+    {
+      "fill_day": "2026-09-24",
+      "recorded_pnl_bps": -89.36,
+      "funding_correction_bps": -0.107,
+      "corrected_pnl_bps": -89.467
+    },
+    {
+      "fill_day": "2026-09-25",
+      "recorded_pnl_bps": 21.96,
+      "funding_correction_bps": 0.018,
+      "corrected_pnl_bps": 21.978
+    },
+    {
+      "fill_day": "2026-09-26",
+      "recorded_pnl_bps": -78.96,
+      "funding_correction_bps": 0.023,
+      "corrected_pnl_bps": -78.937
+    },
+    {
+      "fill_day": "2026-09-27",
+      "recorded_pnl_bps": 21.16,
+      "funding_correction_bps": -0.001,
+      "corrected_pnl_bps": 21.159
+    },
+    {
+      "fill_day": "2026-09-28",
+      "recorded_pnl_bps": -87.09,
+      "funding_correction_bps": -0.017,
+      "corrected_pnl_bps": -87.107
+    },
+    {
+      "fill_day": "2026-09-29",
+      "recorded_pnl_bps": 138.26,
+      "funding_correction_bps": -0.07,
+      "corrected_pnl_bps": 138.19
+    },
+    {
+      "fill_day": "2026-09-30",
+      "recorded_pnl_bps": -53.13,
+      "funding_correction_bps": 0.067,
+      "corrected_pnl_bps": -53.063
+    },
+    {
+      "fill_day": "2026-10-01",
+      "recorded_pnl_bps": 99.92,
+      "funding_correction_bps": -0.0,
+      "corrected_pnl_bps": 99.92
+    },
+    {
+      "fill_day": "2026-10-02",
+      "recorded_pnl_bps": 29.42,
+      "funding_correction_bps": -0.027,
+      "corrected_pnl_bps": 29.393
+    },
+    {
+      "fill_day": "2026-10-03",
+      "recorded_pnl_bps": 69.39,
+      "funding_correction_bps": -0.29,
+      "corrected_pnl_bps": 69.1
+    },
+    {
+      "fill_day": "2026-10-04",
+      "recorded_pnl_bps": -24.2,
+      "funding_correction_bps": 0.142,
+      "corrected_pnl_bps": -24.058
+    },
+    {
+      "fill_day": "2026-10-05",
+      "recorded_pnl_bps": -88.82,
+      "funding_correction_bps": -0.011,
+      "corrected_pnl_bps": -88.831
+    },
+    {
+      "fill_day": "2026-10-06",
+      "recorded_pnl_bps": 21.62,
+      "funding_correction_bps": -0.027,
+      "corrected_pnl_bps": 21.593
+    },
+    {
+      "fill_day": "2026-10-07",
+      "recorded_pnl_bps": 189.42,
+      "funding_correction_bps": -0.132,
+      "corrected_pnl_bps": 189.288
+    },
+    {
+      "fill_day": "2026-10-08",
+      "recorded_pnl_bps": 134.42,
+      "funding_correction_bps": -0.041,
+      "corrected_pnl_bps": 134.379
+    },
+    {
+      "fill_day": "2026-10-09",
+      "recorded_pnl_bps": 53.8,
+      "funding_correction_bps": 0.014,
+      "corrected_pnl_bps": 53.814
+    },
+    {
+      "fill_day": "2026-10-10",
+      "recorded_pnl_bps": -268.48,
+      "funding_correction_bps": -0.011,
+      "corrected_pnl_bps": -268.491
+    },
+    {
+      "fill_day": "2026-10-11",
+      "recorded_pnl_bps": -144.74,
+      "funding_correction_bps": -0.022,
+      "corrected_pnl_bps": -144.762
+    },
+    {
+      "fill_day": "2026-10-12",
+      "recorded_pnl_bps": 196.51,
+      "funding_correction_bps": 0.059,
+      "corrected_pnl_bps": 196.569
+    },
+    {
+      "fill_day": "2026-10-13",
+      "recorded_pnl_bps": 56.03,
+      "funding_correction_bps": 0.009,
+      "corrected_pnl_bps": 56.039
+    },
+    {
+      "fill_day": "2026-10-14",
+      "recorded_pnl_bps": 54.64,
+      "funding_correction_bps": -0.07,
+      "corrected_pnl_bps": 54.57
+    },
+    {
+      "fill_day": "2026-10-15",
+      "recorded_pnl_bps": -75.66,
+      "funding_correction_bps": 0.214,
+      "corrected_pnl_bps": -75.446
+    },
+    {
+      "fill_day": "2026-10-16",
+      "recorded_pnl_bps": -24.94,
+      "funding_correction_bps": -0.058,
+      "corrected_pnl_bps": -24.998
+    },
+    {
+      "fill_day": "2026-10-17",
+      "recorded_pnl_bps": 116.59,
+      "funding_correction_bps": 0.001,
+      "corrected_pnl_bps": 116.591
+    },
+    {
+      "fill_day": "2026-10-18",
+      "recorded_pnl_bps": -2.01,
+      "funding_correction_bps": 0.007,
+      "corrected_pnl_bps": -2.003
+    }
+  ],
+  "note": "The correction changes funding attribution only; fills, fees, and prices remain as booked. A partial result is not an estimate of the full paper period."
+}

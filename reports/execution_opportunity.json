@@ -1,0 +1,534 @@
+{
+  "generated_utc": "2026-10-20T02:06:30.840582+00:00",
+  "source": "COMPLETE execution audit, Binance Demo Futures userTrades and commissionRate",
+  "summary": {
+    "orders": 338,
+    "runs": 13,
+    "notional_usdt": 16897.6270117263,
+    "observed_fee_bps": 4.155663866918323,
+    "observed_shortfall_bps_vs_paper_open": 9.167929966227668,
+    "observed_all_in_bps_vs_paper_open": 13.32359383314599,
+    "hypothetical_all_maker_fee_bps_same_prices": 2.0000000000000004,
+    "maximum_fee_only_saving_bps_same_prices": 2.155663866918322,
+    "hypothetical_all_maker_all_in_bps_same_prices": 11.167929966227668,
+    "maker_caveat": "Fee-only arithmetic upper bound. No passive fill probability, queue position, adverse selection, delay, fallback cost or price improvement is inferred.",
+    "by_side": {
+      "SELL": {
+        "orders": 178,
+        "notional_usdt": 8489.532869290302,
+        "equal_order_shortfall_bps": 15.431814370786515,
+        "weighted_shortfall_bps": 17.58424816424294,
+        "weighted_submit_mid_slippage_bps": 9.570347106731171
+      },
+      "BUY": {
+        "orders": 160,
+        "notional_usdt": 8408.094142436,
+        "equal_order_shortfall_bps": 1.8175444312500033,
+        "weighted_shortfall_bps": 0.6700934194980805,
+        "weighted_submit_mid_slippage_bps": 5.670717595584679
+      }
+    },
+    "by_reason": {
+      "rebalance": {
+        "orders": 249,
+        "notional_usdt": 11661.758714710304,
+        "equal_order_shortfall_bps": 5.940036333333333,
+        "weighted_shortfall_bps": 6.034661736516169,
+        "weighted_submit_mid_slippage_bps": 8.496242491244512
+      },
+      "close_orphan": {
+        "orders": 85,
+        "notional_usdt": 5002.270877216,
+        "equal_order_shortfall_bps": 18.62789994117647,
+        "weighted_shortfall_bps": 17.18636788416443,
+        "weighted_submit_mid_slippage_bps": 5.915601138392354
+      },
+      "close_before_flip": {
+        "orders": 2,
+        "notional_usdt": 108.61296189999999,
+        "equal_order_shortfall_bps": -5.3404235,
+        "weighted_shortfall_bps": -5.053568675040365,
+        "weighted_submit_mid_slippage_bps": 1.1189423066077326
+      },
+      "open_after_flip": {
+        "orders": 2,
+        "notional_usdt": 124.9844579,
+        "equal_order_shortfall_bps": -7.044814,
+        "weighted_shortfall_bps": -7.044814,
+        "weighted_submit_mid_slippage_bps": 1.0689559783372797
+      }
+    },
+    "by_day": {
+      "2026-08-25": {
+        "orders": 34,
+        "notional_usdt": 1989.9910285999997,
+        "equal_order_shortfall_bps": -19.662764647058825,
+        "weighted_shortfall_bps": -22.885297991802457,
+        "weighted_submit_mid_slippage_bps": 3.0357721145207623
+      },
+      "2026-08-26": {
+        "orders": 24,
+        "notional_usdt": 1226.7622054,
+        "equal_order_shortfall_bps": 9.680897208333333,
+        "weighted_shortfall_bps": 5.9094060512050985,
+        "weighted_submit_mid_slippage_bps": 3.641571220655902
+      },
+      "2026-08-27": {
+        "orders": 32,
+        "notional_usdt": 1854.5293439999998,
+        "equal_order_shortfall_bps": -1.1144606249999993,
+        "weighted_shortfall_bps": -3.1560862838744272,
+        "weighted_submit_mid_slippage_bps": 4.656267358167792
+      },
+      "2026-09-26": {
+        "orders": 34,
+        "notional_usdt": 1986.1473643,
+        "equal_order_shortfall_bps": 16.560293205882353,
+        "weighted_shortfall_bps": 17.56815767543921,
+        "weighted_submit_mid_slippage_bps": 12.088569895577308
+      },
+      "2026-10-05": {
+        "orders": 42,
+        "notional_usdt": 2239.5971914199995,
+        "equal_order_shortfall_bps": 18.8502655,
+        "weighted_shortfall_bps": 19.996191795128812,
+        "weighted_submit_mid_slippage_bps": 8.27378485805174
+      },
+      "2026-10-07": {
+        "orders": 17,
+        "notional_usdt": 727.93852,
+        "equal_order_shortfall_bps": -5.140167176470588,
+        "weighted_shortfall_bps": 3.374260537462531,
+        "weighted_submit_mid_slippage_bps": 4.1804739910489195
+      },
+      "2026-10-08": {
+        "orders": 20,
+        "notional_usdt": 736.0915119859999,
+        "equal_order_shortfall_bps": 20.303788250000004,
+        "weighted_shortfall_bps": 27.093867131588866,
+        "weighted_submit_mid_slippage_bps": 7.133074271026688
+      },
+      "2026-10-09": {
+        "orders": 23,
+        "notional_usdt": 801.40127949,
+        "equal_order_shortfall_bps": 13.129866434782608,
+        "weighted_shortfall_bps": 27.96351838917081,
+        "weighted_submit_mid_slippage_bps": 15.273358883552108
+      },
+      "2026-10-10": {
+        "orders": 11,
+        "notional_usdt": 527.81459964,
+        "equal_order_shortfall_bps": 17.966918363636367,
+        "weighted_shortfall_bps": 31.496437148242165,
+        "weighted_submit_mid_slippage_bps": 5.327171936797844
+      },
+      "2026-10-12": {
+        "orders": 28,
+        "notional_usdt": 1277.90650101,
+        "equal_order_shortfall_bps": 15.57012782142857,
+        "weighted_shortfall_bps": 9.946998406857972,
+        "weighted_submit_mid_slippage_bps": 8.943788337088014
+      },
+      "2026-10-13": {
+        "orders": 19,
+        "notional_usdt": 588.2218759,
+        "equal_order_shortfall_bps": 5.663311947368423,
+        "weighted_shortfall_bps": -12.109201409252938,
+        "weighted_submit_mid_slippage_bps": 5.390959691312829
+      },
+      "2026-10-14": {
+        "orders": 21,
+        "notional_usdt": 949.93122534,
+        "equal_order_shortfall_bps": -9.640328904761905,
+        "weighted_shortfall_bps": -1.8039078609532597,
+        "weighted_submit_mid_slippage_bps": 5.300061890199241
+      },
+      "2026-10-20": {
+        "orders": 33,
+        "notional_usdt": 1991.2943646403,
+        "equal_order_shortfall_bps": 30.161472727272724,
+        "weighted_shortfall_bps": 27.156259053234262,
+        "weighted_submit_mid_slippage_bps": 12.184898433278256
+      }
+    },
+    "by_symbol_ge_5_orders": {
+      "1000PEPEUSDT": {
+        "orders": 17,
+        "notional_usdt": 639.3350385000001,
+        "equal_order_shortfall_bps": -20.47881582352941,
+        "weighted_shortfall_bps": -8.56846622416166,
+        "weighted_submit_mid_slippage_bps": 3.8441297169481343
+      },
+      "1000SHIBUSDT": {
+        "orders": 11,
+        "notional_usdt": 598.995304,
+        "equal_order_shortfall_bps": -28.401807363636365,
+        "weighted_shortfall_bps": -28.670089685847643,
+        "weighted_submit_mid_slippage_bps": 4.03623934058752
+      },
+      "ATOMUSDT": {
+        "orders": 12,
+        "notional_usdt": 775.8471400000001,
+        "equal_order_shortfall_bps": -3.806004999999999,
+        "weighted_shortfall_bps": -3.5821509313310043,
+        "weighted_submit_mid_slippage_bps": 2.8441925623694604
+      },
+      "BCHUSDT": {
+        "orders": 11,
+        "notional_usdt": 588.88995,
+        "equal_order_shortfall_bps": -18.015339363636365,
+        "weighted_shortfall_bps": -11.418898552140432,
+        "weighted_submit_mid_slippage_bps": 0.5611762049791915
+      },
+      "BNBUSDT": {
+        "orders": 12,
+        "notional_usdt": 594.1172,
+        "equal_order_shortfall_bps": 2.9204915833333334,
+        "weighted_shortfall_bps": 1.1505109985046722,
+        "weighted_submit_mid_slippage_bps": 0.4772364041522019
+      },
+      "ENAUSDT": {
+        "orders": 12,
+        "notional_usdt": 401.95400000000006,
+        "equal_order_shortfall_bps": 20.330298666666668,
+        "weighted_shortfall_bps": 20.868193681731736,
+        "weighted_submit_mid_slippage_bps": 15.28618851230766
+      },
+      "GALAUSDT": {
+        "orders": 12,
+        "notional_usdt": 612.0129099999999,
+        "equal_order_shortfall_bps": 16.393723083333327,
+        "weighted_shortfall_bps": -0.868178267674584,
+        "weighted_submit_mid_slippage_bps": 3.043008356427752
+      },
+      "INJUSDT": {
+        "orders": 9,
+        "notional_usdt": 466.03750000599996,
+        "equal_order_shortfall_bps": 13.567603555555555,
+        "weighted_shortfall_bps": 25.935408323383328,
+        "weighted_submit_mid_slippage_bps": 11.953140426304603
+      },
+      "OPUSDT": {
+        "orders": 14,
+        "notional_usdt": 825.01426,
+        "equal_order_shortfall_bps": 7.481817000000002,
+        "weighted_shortfall_bps": 5.213107101877486,
+        "weighted_submit_mid_slippage_bps": 4.0990591375541445
+      },
+      "ORDIUSDT": {
+        "orders": 11,
+        "notional_usdt": 565.1439,
+        "equal_order_shortfall_bps": 56.809352090909094,
+        "weighted_shortfall_bps": 52.241521792317144,
+        "weighted_submit_mid_slippage_bps": 5.628119808654879
+      },
+      "PYTHUSDT": {
+        "orders": 6,
+        "notional_usdt": 329.3013116,
+        "equal_order_shortfall_bps": 3.8464888333333342,
+        "weighted_shortfall_bps": 2.775994289387727,
+        "weighted_submit_mid_slippage_bps": 16.353064585068342
+      },
+      "SANDUSDT": {
+        "orders": 11,
+        "notional_usdt": 526.8734099999999,
+        "equal_order_shortfall_bps": -48.446253181818186,
+        "weighted_shortfall_bps": -36.83136635020352,
+        "weighted_submit_mid_slippage_bps": 8.741728616703881
+      },
+      "SEIUSDT": {
+        "orders": 12,
+        "notional_usdt": 689.6730249000002,
+        "equal_order_shortfall_bps": -6.696223333333333,
+        "weighted_shortfall_bps": -7.651549370455124,
+        "weighted_submit_mid_slippage_bps": 13.713005696185968
+      },
+      "SOLUSDT": {
+        "orders": 8,
+        "notional_usdt": 460.63500029000005,
+        "equal_order_shortfall_bps": -28.486557999999995,
+        "weighted_shortfall_bps": -28.0901874662808,
+        "weighted_submit_mid_slippage_bps": 1.1296883188670541
+      },
+      "TAOUSDT": {
+        "orders": 12,
+        "notional_usdt": 481.25335000000007,
+        "equal_order_shortfall_bps": 59.952233750000005,
+        "weighted_shortfall_bps": 58.65010983706201,
+        "weighted_submit_mid_slippage_bps": 10.740299462958797
+      },
+      "UNIUSDT": {
+        "orders": 12,
+        "notional_usdt": 574.0126000000001,
+        "equal_order_shortfall_bps": 25.030494749999992,
+        "weighted_shortfall_bps": 32.73271468800092,
+        "weighted_submit_mid_slippage_bps": 14.218010328056831
+      },
+      "WLDUSDT": {
+        "orders": 8,
+        "notional_usdt": 520.1067,
+        "equal_order_shortfall_bps": 105.57813074999999,
+        "weighted_shortfall_bps": 104.61910428271315,
+        "weighted_submit_mid_slippage_bps": 9.750040410175318
+      },
+      "ARBUSDT": {
+        "orders": 11,
+        "notional_usdt": 325.7205274399999,
+        "equal_order_shortfall_bps": -5.823346000000001,
+        "weighted_shortfall_bps": 10.471993451861497,
+        "weighted_submit_mid_slippage_bps": 6.5758536181053735
+      },
+      "FILUSDT": {
+        "orders": 11,
+        "notional_usdt": 576.0731443999999,
+        "equal_order_shortfall_bps": -7.095853000000002,
+        "weighted_shortfall_bps": -6.486121185329815,
+        "weighted_submit_mid_slippage_bps": 9.018694470065288
+      },
+      "JTOUSDT": {
+        "orders": 9,
+        "notional_usdt": 283.8378,
+        "equal_order_shortfall_bps": 23.816196777777776,
+        "weighted_shortfall_bps": 15.088237252795436,
+        "weighted_submit_mid_slippage_bps": 3.0338767298704514
+      },
+      "RUNEUSDT": {
+        "orders": 12,
+        "notional_usdt": 515.6151,
+        "equal_order_shortfall_bps": -10.129757500000002,
+        "weighted_shortfall_bps": -27.028885755375477,
+        "weighted_submit_mid_slippage_bps": 8.406329610987939
+      },
+      "TRXUSDT": {
+        "orders": 6,
+        "notional_usdt": 374.54251999999997,
+        "equal_order_shortfall_bps": -10.005816666666668,
+        "weighted_shortfall_bps": -10.000456126575001,
+        "weighted_submit_mid_slippage_bps": 1.2020424424257774
+      },
+      "AAVEUSDT": {
+        "orders": 6,
+        "notional_usdt": 313.004,
+        "equal_order_shortfall_bps": 19.637382,
+        "weighted_shortfall_bps": 19.088215475834172,
+        "weighted_submit_mid_slippage_bps": 11.070776230585741
+      },
+      "APTUSDT": {
+        "orders": 5,
+        "notional_usdt": 333.2502345,
+        "equal_order_shortfall_bps": -24.732291599999996,
+        "weighted_shortfall_bps": -27.46321507897401,
+        "weighted_submit_mid_slippage_bps": 3.8175947848142124
+      },
+      "NEARUSDT": {
+        "orders": 12,
+        "notional_usdt": 417.55099999999993,
+        "equal_order_shortfall_bps": 35.251047,
+        "weighted_shortfall_bps": 27.957864522884627,
+        "weighted_submit_mid_slippage_bps": 12.722504260973515
+      },
+      "SUIUSDT": {
+        "orders": 6,
+        "notional_usdt": 332.96643778,
+        "equal_order_shortfall_bps": 15.284801166666663,
+        "weighted_shortfall_bps": 15.268728516464328,
+        "weighted_submit_mid_slippage_bps": 8.620842301761439
+      },
+      "XLMUSDT": {
+        "orders": 12,
+        "notional_usdt": 600.48384,
+        "equal_order_shortfall_bps": 27.432765083333326,
+        "weighted_shortfall_bps": 35.279582687849256,
+        "weighted_submit_mid_slippage_bps": 10.343079240623188
+      },
+      "BTCUSDT": {
+        "orders": 9,
+        "notional_usdt": 578.3687000003,
+        "equal_order_shortfall_bps": 18.002979444444446,
+        "weighted_shortfall_bps": 19.08198339800078,
+        "weighted_submit_mid_slippage_bps": 2.2236767296276354
+      },
+      "TIAUSDT": {
+        "orders": 10,
+        "notional_usdt": 568.8692168,
+        "equal_order_shortfall_bps": 19.786806300000002,
+        "weighted_shortfall_bps": 18.0689241116546,
+        "weighted_submit_mid_slippage_bps": 13.721261115312785
+      },
+      "MANAUSDT": {
+        "orders": 8,
+        "notional_usdt": 285.1520402,
+        "equal_order_shortfall_bps": -13.462914625000003,
+        "weighted_shortfall_bps": -6.952753930487343,
+        "weighted_submit_mid_slippage_bps": 16.861129908394318
+      },
+      "CRVUSDT": {
+        "orders": 9,
+        "notional_usdt": 459.64445644,
+        "equal_order_shortfall_bps": 41.07486744444444,
+        "weighted_shortfall_bps": 35.90601651379766,
+        "weighted_submit_mid_slippage_bps": 20.673860129352924
+      },
+      "XRPUSDT": {
+        "orders": 6,
+        "notional_usdt": 375.68079000000006,
+        "equal_order_shortfall_bps": -8.511445,
+        "weighted_shortfall_bps": -8.564163268742004,
+        "weighted_submit_mid_slippage_bps": 1.0061553466981925
+      },
+      "ETHUSDT": {
+        "orders": 6,
+        "notional_usdt": 357.19176987,
+        "equal_order_shortfall_bps": 7.193254333333331,
+        "weighted_shortfall_bps": 5.2948430298323705,
+        "weighted_submit_mid_slippage_bps": 1.608868400853002
+      }
+    }
+  },
+  "account_commission_rates": {
+    "1000PEPEUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "1000SHIBUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "AAVEUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "ADAUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "APTUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "ARBUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "ATOMUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "BCHUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "BNBUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "BTCUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "CRVUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "DOGEUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "ENAUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000500"
+    },
+    "ETCUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "ETHUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "FILUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "GALAUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "INJUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "JTOUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000500"
+    },
+    "MANAUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "NEARUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "OPUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "ORDIUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000500"
+    },
+    "PYTHUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000500"
+    },
+    "RUNEUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "SANDUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "SEIUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "SOLUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "SUIUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "TAOUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000500"
+    },
+    "TIAUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000500"
+    },
+    "TRXUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "UNIUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "WLDUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "XLMUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    },
+    "XRPUSDT": {
+      "makerCommissionRate": "0.000200",
+      "takerCommissionRate": "0.000400"
+    }
+  }
+}

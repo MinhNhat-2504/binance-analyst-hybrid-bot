@@ -1,0 +1,126 @@
+{
+  "generated_utc": "2026-10-20T02:05:13.051967+00:00",
+  "protocol": "RESEARCH_Q1_SHORT_BTC_PROTOCOL.md",
+  "status": "EXPLORATORY_ONLY; both historical panels previously inspected",
+  "cost_per_leg": 0.001,
+  "stress_cost_per_leg": 0.002,
+  "discovery_history": {
+    "symbols_requested": 42,
+    "symbols_used": 42,
+    "panel_start": "2024-12-10",
+    "panel_end": "2026-07-31",
+    "candidate": {
+      "n_days": 508,
+      "start": "2025-03-11",
+      "sharpe": 0.12060875289040018,
+      "ann_ret_pct": 2.4321191542458958,
+      "total_ret_pct": 0.5194470587678524,
+      "max_dd_pct": -19.71813008640503,
+      "half_returns_pct": [
+        10.396884831803632,
+        -8.94720696882392
+      ],
+      "post_2026_04_03_return_pct": -13.907969968198216,
+      "turnover": 0.16190752149096435
+    },
+    "v1_same_days": {
+      "n_days": 508,
+      "start": "2025-03-11",
+      "sharpe": 1.7411500893271048,
+      "ann_ret_pct": 31.704963878758498,
+      "total_ret_pct": 51.90111407980318,
+      "max_dd_pct": -14.682646662905885,
+      "half_returns_pct": [
+        30.112457293235252,
+        16.746018974541926
+      ],
+      "post_2026_04_03_return_pct": 6.1470083239863555,
+      "turnover": 0.2926438172501165
+    },
+    "candidate_stress_20bps": {
+      "n_days": 508,
+      "start": "2025-03-11",
+      "sharpe": -0.17254131213893112,
+      "ann_ret_pct": -3.477505380174301,
+      "total_ret_pct": -7.4152683308239205,
+      "max_dd_pct": -24.321276967130245,
+      "half_returns_pct": [
+        5.881043847347328,
+        -12.557783428486886
+      ],
+      "post_2026_04_03_return_pct": -15.59346503016151,
+      "turnover": 0.16190752149096435
+    },
+    "mean_abs_ex_ante_btc_beta": 0.00020567679989506123,
+    "paired_bootstrap": {
+      "n": 999,
+      "block_days": 22,
+      "observed_delta_sharpe": -1.6205413364367045,
+      "ci95": [
+        -3.455251244489442,
+        0.023850877605783527
+      ],
+      "fraction_delta_le_zero": 0.9719719719719719
+    }
+  },
+  "disjoint_history_previously_inspected": {
+    "symbols_requested": 33,
+    "symbols_used": 33,
+    "panel_start": "2024-12-10",
+    "panel_end": "2026-07-31",
+    "candidate": {
+      "n_days": 508,
+      "start": "2025-03-11",
+      "sharpe": 1.6158528238750294,
+      "ann_ret_pct": 31.652265083990393,
+      "total_ret_pct": 51.256584668444226,
+      "max_dd_pct": -12.078499641755302,
+      "half_returns_pct": [
+        21.24809724769554,
+        24.74965636734477
+      ],
+      "post_2026_04_03_return_pct": 13.054886459293002,
+      "turnover": 0.16070719211633466
+    },
+    "v1_same_days": {
+      "n_days": 508,
+      "start": "2025-03-11",
+      "sharpe": 1.9520769945634815,
+      "ann_ret_pct": 42.44966564497436,
+      "total_ret_pct": 74.70321944373062,
+      "max_dd_pct": -12.52372879695437,
+      "half_returns_pct": [
+        56.194785719200354,
+        11.849584888066488
+      ],
+      "post_2026_04_03_return_pct": 18.240376900372524,
+      "turnover": 0.2946404645223543
+    },
+    "candidate_stress_20bps": {
+      "n_days": 508,
+      "start": "2025-03-11",
+      "sharpe": 1.3157435729762583,
+      "ann_ret_pct": 25.786452571744174,
+      "total_ret_pct": 39.40263392016084,
+      "max_dd_pct": -12.582705590060083,
+      "half_returns_pct": [
+        16.017561171106394,
+        20.156493993668207
+      ],
+      "post_2026_04_03_return_pct": 11.085447724610049,
+      "turnover": 0.16070719211633466
+    },
+    "mean_abs_ex_ante_btc_beta": 1.2778492175163957e-15,
+    "paired_bootstrap": {
+      "n": 999,
+      "block_days": 22,
+      "observed_delta_sharpe": -0.3362241706884521,
+      "ci95": [
+        -2.308283396221682,
+        1.6943235988215286
+      ],
+      "fraction_delta_le_zero": 0.6166166166166166
+    }
+  },
+  "decision": "NO_V1_CHANGE; prospective shadow evidence required"
+}

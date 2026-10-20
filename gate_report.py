@@ -390,9 +390,43 @@ def evaluate(root: Path, today: date) -> GateResult:
                                    flip=f"{TRACKING_CONSECUTIVE_WEEKS - current_run} more consecutive week(s) beyond {TRACKING_WEEKLY_LIMIT_PCT:.0f}%"))
 
     # ---- fill quality ----------------------------------------------------------
-    qrows = _read_csv(root / "execution_quality.csv")
+    qrows = _read_csv(root / "execution_quality.csv") or []
     cost_bps = cost_per_leg * 1e4
-    if not qrows:
+    expected_orders = None
+    audit_query_error = None
+    if db.exists():
+        try:
+            with sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True) as conn:
+                has_legs = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='execution_legs'"
+                ).fetchone()
+                if has_legs:
+                    expected_orders = conn.execute(
+                        "SELECT r.run_id,l.symbol,l.order_id FROM execution_legs l "
+                        "JOIN execution_runs r ON l.run_id=r.run_id "
+                        "WHERE r.environment='testnet' AND r.dry_run=0 AND r.status='COMPLETE' "
+                        "AND l.status='FILLED' AND l.order_id!='' AND l.reason!='emergency_flatten' "
+                        "AND l.avg_fill_price>0"
+                    ).fetchall()
+        except sqlite3.Error as exc:
+            audit_query_error = str(exc)
+    quality_keys = [(r.get("run_id"), r.get("symbol"), str(r.get("order_id", ""))) for r in qrows]
+    expected_keys = {(run, symbol, str(order)) for run, symbol, order in expected_orders or []}
+    if audit_query_error:
+        conds.append(Condition("fill shortfall", NOT_YET, "audit query failed", f"mean <= {cost_bps:.0f} bps",
+                               "cannot verify execution_quality.csv against audit DB"))
+        must.append("repair execution audit query before accepting fill quality")
+        facts["fills"] = None
+    elif expected_orders and (
+        len(qrows) != len(expected_orders) or len(set(quality_keys)) != len(qrows)
+        or set(quality_keys) != expected_keys
+    ):
+        meas = f"{len(set(quality_keys) & expected_keys)}/{len(expected_orders)} COMPLETE orders priced"
+        conds.append(Condition("fill shortfall", NOT_YET, meas, f"mean <= {cost_bps:.0f} bps",
+                               "execution_quality.csv is incomplete or mismatched; rebuild from audit orderIds"))
+        must.append("rebuild complete execution_quality.csv with analyze_execution_quality.py")
+        facts["fills"] = None
+    elif not qrows:
         conds.append(Condition("fill shortfall", NOT_YET, "no execution_quality.csv", f"mean <= {cost_bps:.0f} bps",
                                "run analyze_execution_quality.py after COMPLETE runs", flip="fill analysis with mean inside cost"))
         must.append("execution_quality.csv must exist (analyze_execution_quality.py)")

@@ -191,6 +191,28 @@ def test_fill_shortfall_above_cost_assumption_blocks_go(tmp_path):
     assert res.verdict == "NOT-YET"
 
 
+def test_partial_quality_csv_cannot_pass_when_complete_orders_exist(tmp_path):
+    today = _full_green(tmp_path)
+    db = tmp_path / ".execution" / "testnet_execution.sqlite3"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE execution_legs (run_id TEXT, symbol TEXT, order_id TEXT, status TEXT, "
+                     "reason TEXT, avg_fill_price REAL)")
+        conn.execute("INSERT INTO execution_legs VALUES ('run0','AAAUSDT','101','FILLED','rebalance',1)")
+    res = gr.evaluate(tmp_path, today)
+    fills = next(c for c in res.conditions if c.name == "fill shortfall")
+    assert fills.status == gr.NOT_YET
+    assert "incomplete" in fills.note
+    assert res.verdict == "NOT-YET"
+    with (tmp_path / "execution_quality.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["run_id", "symbol", "order_id", "shortfall_bps"])
+        writer.writeheader()
+        writer.writerow({"run_id": "run0", "symbol": "OTHER", "order_id": "101", "shortfall_bps": 0})
+    res = gr.evaluate(tmp_path, today)
+    fills = next(c for c in res.conditions if c.name == "fill shortfall")
+    assert fills.status == gr.NOT_YET
+    assert "0/1" in fills.measured
+
+
 def test_canary_alert_and_marker_block_go(tmp_path):
     today = _full_green(tmp_path)
     _canary(tmp_path, [(today - timedelta(days=1), "SIGNAL: Binance edge converging")])

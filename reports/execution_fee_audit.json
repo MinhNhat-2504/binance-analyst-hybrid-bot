@@ -1,0 +1,247 @@
+{
+  "generated_utc": "2026-10-20T02:01:16.835585+00:00",
+  "source": "Binance Demo Futures GET /fapi/v1/userTrades matched to COMPLETE audit orderIds",
+  "audit_order_count": 338,
+  "matched_order_count": 338,
+  "unmatched_order_count": 0,
+  "unmatched_orders": [],
+  "full_windows": [],
+  "errors": [],
+  "commission_by_asset": {
+    "USDT": 7.022084700000002
+  },
+  "totals": {
+    "orders": 338,
+    "trades": 406,
+    "notional_usdt": 16897.624362500002,
+    "commission_usdt": 7.0220847000000015,
+    "maker_notional_usdt": 0.0,
+    "commission_bps": 4.155663866918323,
+    "maker_notional_share_pct": 0.0
+  },
+  "price_quality": {
+    "covered_orders": 338,
+    "missing_open_orders": 0,
+    "notional_usdt": 16897.6270117263,
+    "signed_shortfall_usdt": 15.491626103894362,
+    "submit_mid_slippage_usdt": 12.892770373195596,
+    "submit_mid_coverage": 338,
+    "shortfall_bps_vs_paper_open": 9.167929966227668,
+    "submit_mid_slippage_bps": 7.6299295541607774,
+    "errors": [],
+    "by_run": {
+      "65667a94cdbf4a7091fdd642ea1a1fad": {
+        "orders": 34,
+        "notional_usdt": 1989.9910285999997,
+        "signed_shortfall_usdt": -4.554153749480231,
+        "shortfall_bps_vs_paper_open": -22.885297893449163
+      },
+      "26b97749766a4478a57d38b365fd4b2b": {
+        "orders": 24,
+        "notional_usdt": 1226.7622054,
+        "signed_shortfall_usdt": 0.7249435890683835,
+        "shortfall_bps_vs_paper_open": 5.909405962111518
+      },
+      "0c0f5b24ac1844c9bf573460346db45b": {
+        "orders": 32,
+        "notional_usdt": 1854.5293439999998,
+        "signed_shortfall_usdt": -0.5853054579179306,
+        "shortfall_bps_vs_paper_open": -3.1560862588213148
+      },
+      "13a6d7a1afd049858c577e88511d8d76": {
+        "orders": 34,
+        "notional_usdt": 1986.1473643,
+        "signed_shortfall_usdt": 3.4892950088006525,
+        "shortfall_bps_vs_paper_open": 17.568157688190592
+      },
+      "3b1aa7bde2134a28b092d10f84f3159c": {
+        "orders": 42,
+        "notional_usdt": 2239.5971914199995,
+        "signed_shortfall_usdt": 4.478341493220184,
+        "shortfall_bps_vs_paper_open": 19.996191772238856
+      },
+      "ee179c3df2e049f7ac46377bcd53e0e0": {
+        "orders": 17,
+        "notional_usdt": 727.93852,
+        "signed_shortfall_usdt": 0.24562542335828585,
+        "shortfall_bps_vs_paper_open": 3.3742605537386017
+      },
+      "1de59d3391c1425fa2a407e1a2d50567": {
+        "orders": 20,
+        "notional_usdt": 736.0915119859999,
+        "signed_shortfall_usdt": 1.9943565583512268,
+        "shortfall_bps_vs_paper_open": 27.093867078705813
+      },
+      "61c9c82d645c4181bb4faa51e480891f": {
+        "orders": 23,
+        "notional_usdt": 801.40127949,
+        "signed_shortfall_usdt": 2.240999932935585,
+        "shortfall_bps_vs_paper_open": 27.963518280900733
+      },
+      "bc9c7acca953481a87d7cda1ef2da4e8": {
+        "orders": 11,
+        "notional_usdt": 527.81459964,
+        "signed_shortfall_usdt": 1.6624279411259568,
+        "shortfall_bps_vs_paper_open": 31.496437238754456
+      },
+      "53021dda9204461ebda57c9ef38d0b4d": {
+        "orders": 28,
+        "notional_usdt": 1277.90650101,
+        "signed_shortfall_usdt": 1.2711333944575856,
+        "shortfall_bps_vs_paper_open": 9.946998418530141
+      },
+      "6907e8135f7f4eb0a994b4b09da5e7bf": {
+        "orders": 19,
+        "notional_usdt": 588.2218759,
+        "signed_shortfall_usdt": -0.7122897084798736,
+        "shortfall_bps_vs_paper_open": -12.109201266784671
+      },
+      "f1bfc5acf2024aeab01aa15ed77e6855": {
+        "orders": 21,
+        "notional_usdt": 949.93122534,
+        "signed_shortfall_usdt": -0.17135884619042505,
+        "shortfall_bps_vs_paper_open": -1.8039079211138909
+      },
+      "ac0ab891578f4c1bba9e58408ad555a0": {
+        "orders": 33,
+        "notional_usdt": 1991.2943646403,
+        "signed_shortfall_usdt": 5.407610524644959,
+        "shortfall_bps_vs_paper_open": 27.15625886693939
+      }
+    },
+    "fee_plus_shortfall_bps_vs_paper_open": 13.32359383314599
+  },
+  "by_run": {
+    "65667a94cdbf4a7091fdd642ea1a1fad": {
+      "orders": 34,
+      "trades": 39,
+      "notional_usdt": 1989.992152,
+      "commission_usdt": 0.8403861800000001,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.223062785224492,
+      "shortfall_bps_vs_paper_open": -22.885297893449163,
+      "fee_plus_shortfall_bps_vs_paper_open": -18.66223510822467
+    },
+    "26b97749766a4478a57d38b365fd4b2b": {
+      "orders": 24,
+      "trades": 28,
+      "notional_usdt": 1226.7622054,
+      "commission_usdt": 0.51466529,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.19531419972453,
+      "shortfall_bps_vs_paper_open": 5.909405962111518,
+      "fee_plus_shortfall_bps_vs_paper_open": 10.104720161836049
+    },
+    "13a6d7a1afd049858c577e88511d8d76": {
+      "orders": 34,
+      "trades": 35,
+      "notional_usdt": 1986.1473565000001,
+      "commission_usdt": 0.8276268299999999,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.166996105759487,
+      "shortfall_bps_vs_paper_open": 17.568157688190592,
+      "fee_plus_shortfall_bps_vs_paper_open": 21.73515379395008
+    },
+    "3b1aa7bde2134a28b092d10f84f3159c": {
+      "orders": 42,
+      "trades": 48,
+      "notional_usdt": 2239.5972163999995,
+      "commission_usdt": 0.9305207599999997,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.15485763773072,
+      "shortfall_bps_vs_paper_open": 19.996191772238856,
+      "fee_plus_shortfall_bps_vs_paper_open": 24.151049409969573
+    },
+    "1de59d3391c1425fa2a407e1a2d50567": {
+      "orders": 20,
+      "trades": 25,
+      "notional_usdt": 736.092847,
+      "commission_usdt": 0.29505158,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.008347332846721,
+      "shortfall_bps_vs_paper_open": 27.093867078705813,
+      "fee_plus_shortfall_bps_vs_paper_open": 31.102214411552534
+    },
+    "61c9c82d645c4181bb4faa51e480891f": {
+      "orders": 23,
+      "trades": 28,
+      "notional_usdt": 801.4012701999998,
+      "commission_usdt": 0.33471024000000005,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.176562384490218,
+      "shortfall_bps_vs_paper_open": 27.963518280900733,
+      "fee_plus_shortfall_bps_vs_paper_open": 32.140080665390954
+    },
+    "bc9c7acca953481a87d7cda1ef2da4e8": {
+      "orders": 11,
+      "trades": 13,
+      "notional_usdt": 527.8145987999999,
+      "commission_usdt": 0.21112578,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 3.999998872331306,
+      "shortfall_bps_vs_paper_open": 31.496437238754456,
+      "fee_plus_shortfall_bps_vs_paper_open": 35.496436111085764
+    },
+    "53021dda9204461ebda57c9ef38d0b4d": {
+      "orders": 28,
+      "trades": 33,
+      "notional_usdt": 1277.9065010000002,
+      "commission_usdt": 0.5393976300000001,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.2209475386337365,
+      "shortfall_bps_vs_paper_open": 9.946998418530141,
+      "fee_plus_shortfall_bps_vs_paper_open": 14.167945957163877
+    },
+    "6907e8135f7f4eb0a994b4b09da5e7bf": {
+      "orders": 19,
+      "trades": 23,
+      "notional_usdt": 588.2218214,
+      "commission_usdt": 0.24030242000000002,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.085234706663333,
+      "shortfall_bps_vs_paper_open": -12.109201266784671,
+      "fee_plus_shortfall_bps_vs_paper_open": -8.023966560121337
+    },
+    "f1bfc5acf2024aeab01aa15ed77e6855": {
+      "orders": 21,
+      "trades": 24,
+      "notional_usdt": 949.9312278999998,
+      "commission_usdt": 0.4032565,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.245112574006791,
+      "shortfall_bps_vs_paper_open": -1.8039079211138909,
+      "fee_plus_shortfall_bps_vs_paper_open": 2.4412046528929006
+    },
+    "ac0ab891578f4c1bba9e58408ad555a0": {
+      "orders": 33,
+      "trades": 58,
+      "notional_usdt": 1991.289301900001,
+      "commission_usdt": 0.8187008100000001,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.111410678593169,
+      "shortfall_bps_vs_paper_open": 27.15625886693939,
+      "fee_plus_shortfall_bps_vs_paper_open": 31.26766954553256
+    },
+    "0c0f5b24ac1844c9bf573460346db45b": {
+      "orders": 32,
+      "trades": 34,
+      "notional_usdt": 1854.529344,
+      "commission_usdt": 0.7637959799999999,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.118543513323885,
+      "shortfall_bps_vs_paper_open": -3.1560862588213148,
+      "fee_plus_shortfall_bps_vs_paper_open": 0.9624572545025698
+    },
+    "ee179c3df2e049f7ac46377bcd53e0e0": {
+      "orders": 17,
+      "trades": 18,
+      "notional_usdt": 727.9385199999999,
+      "commission_usdt": 0.30254469999999994,
+      "maker_notional_usdt": 0.0,
+      "commission_bps": 4.156184783297359,
+      "shortfall_bps_vs_paper_open": 3.3742605537386017,
+      "fee_plus_shortfall_bps_vs_paper_open": 7.53044533703596
+    }
+  },
+  "complete": true
+}

@@ -1,0 +1,926 @@
+{
+  "generated_utc": "2026-10-19T21:40:19.421746+00:00",
+  "protocol": "RESEARCH_PREREG_Q4_2026.md cell 3 data kill",
+  "label_alignment": "archive[D] == REST[D+1]",
+  "threshold": {
+    "error_pct": 1.0,
+    "bad_share_pct": 5.0
+  },
+  "totals": {
+    "toptrader_position_ratio": {
+      "overlap": 1200,
+      "bad": 0,
+      "bad_share_pct": 0.0
+    },
+    "global_account_ratio": {
+      "overlap": 1200,
+      "bad": 0,
+      "bad_share_pct": 0.0
+    },
+    "open_interest": {
+      "overlap": 1200,
+      "bad": 0,
+      "bad_share_pct": 0.0
+    }
+  },
+  "incomplete": [],
+  "passes": true,
+  "eligibility": {
+    "eligible_symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "DOGEUSDT",
+      "AVAXUSDT",
+      "LINKUSDT",
+      "NEARUSDT",
+      "ADAUSDT",
+      "LTCUSDT",
+      "BCHUSDT",
+      "DOTUSDT",
+      "ATOMUSDT",
+      "UNIUSDT",
+      "FILUSDT",
+      "TRXUSDT",
+      "ETCUSDT",
+      "XLMUSDT",
+      "APTUSDT",
+      "ARBUSDT",
+      "OPUSDT",
+      "INJUSDT",
+      "SUIUSDT",
+      "TIAUSDT",
+      "SEIUSDT",
+      "RUNEUSDT",
+      "AAVEUSDT",
+      "CRVUSDT",
+      "SANDUSDT",
+      "MANAUSDT",
+      "GALAUSDT",
+      "1000PEPEUSDT",
+      "1000SHIBUSDT",
+      "WLDUSDT",
+      "TONUSDT",
+      "ENAUSDT",
+      "JTOUSDT",
+      "PYTHUSDT",
+      "TAOUSDT",
+      "ORDIUSDT"
+    ],
+    "excluded_symbols": [
+      "MKRUSDT"
+    ],
+    "short_archive_days": {
+      "BTCUSDT": 1,
+      "ETHUSDT": 1,
+      "SOLUSDT": 1,
+      "BNBUSDT": 1,
+      "XRPUSDT": 1,
+      "DOGEUSDT": 1,
+      "AVAXUSDT": 1,
+      "LINKUSDT": 1,
+      "NEARUSDT": 1,
+      "ADAUSDT": 1,
+      "LTCUSDT": 1,
+      "BCHUSDT": 1,
+      "DOTUSDT": 1,
+      "ATOMUSDT": 1,
+      "UNIUSDT": 1,
+      "FILUSDT": 1,
+      "TRXUSDT": 1,
+      "ETCUSDT": 1,
+      "XLMUSDT": 1,
+      "APTUSDT": 1,
+      "ARBUSDT": 1,
+      "OPUSDT": 1,
+      "INJUSDT": 1,
+      "SUIUSDT": 1,
+      "TIAUSDT": 1,
+      "SEIUSDT": 1,
+      "RUNEUSDT": 1,
+      "AAVEUSDT": 1,
+      "MKRUSDT": 139,
+      "CRVUSDT": 1,
+      "SANDUSDT": 1,
+      "MANAUSDT": 1,
+      "GALAUSDT": 1,
+      "1000PEPEUSDT": 1,
+      "1000SHIBUSDT": 1,
+      "WLDUSDT": 1,
+      "TONUSDT": 40,
+      "ENAUSDT": 1,
+      "JTOUSDT": 1,
+      "PYTHUSDT": 1,
+      "TAOUSDT": 1,
+      "ORDIUSDT": 1
+    },
+    "valid_symbol_days": 24479,
+    "inactive_at_panel_end": [
+      "TONUSDT"
+    ]
+  },
+  "symbols": {
+    "BTCUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.001488448084691063,
+        "max_error_pct": 0.0030848963474827684
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.011219702063419712,
+        "max_error_pct": 0.023031374961535178
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ETHUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0017063908473002876,
+        "max_error_pct": 0.00285030213201809
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0110459007538255,
+        "max_error_pct": 0.025191359756326914
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "SOLUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0009876367577210665,
+        "max_error_pct": 0.002274891545850366
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.014624840860810728,
+        "max_error_pct": 0.024869321460951888
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "BNBUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.002143995074221916,
+        "max_error_pct": 0.003492941347671419
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.01163743819239671,
+        "max_error_pct": 0.024992516776889406
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "XRPUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0018169405032797403,
+        "max_error_pct": 0.0025718439002675453
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.007868165872670918,
+        "max_error_pct": 0.023242232868747603
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "DOGEUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0006702607158959317,
+        "max_error_pct": 0.0016061887435636635
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.011204492569943936,
+        "max_error_pct": 0.02453598034555249
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "AVAXUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0007619826732363499,
+        "max_error_pct": 0.001981505944526063
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.014747644395829429,
+        "max_error_pct": 0.023908519205539935
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "LINKUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0012861212981829517,
+        "max_error_pct": 0.002724950326427056
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.007717279305130553,
+        "max_error_pct": 0.02105687527134137
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "NEARUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.000926985504073885,
+        "max_error_pct": 0.0018248175182478121
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.008479863027333057,
+        "max_error_pct": 0.021640254554533556
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ADAUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0017405582137364206,
+        "max_error_pct": 0.002958930050889208
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.014676544592095997,
+        "max_error_pct": 0.021693389307575472
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "LTCUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0004994338397512621,
+        "max_error_pct": 0.0015635090581445077
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.015261587602433124,
+        "max_error_pct": 0.02617385352499113
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "BCHUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0013369635995685858,
+        "max_error_pct": 0.0041227229146678646
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.012836739501065342,
+        "max_error_pct": 0.022023042836050166
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "DOTUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0011364702885652278,
+        "max_error_pct": 0.0025037847909636923
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.01423770632471566,
+        "max_error_pct": 0.022605055633584392
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ATOMUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0008893442353385961,
+        "max_error_pct": 0.002176601533521172
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.008881525601239781,
+        "max_error_pct": 0.022871027241766484
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "UNIUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.00047621047928325666,
+        "max_error_pct": 0.001505817932923037
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.010182756860904751,
+        "max_error_pct": 0.022361042523999508
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "FILUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0008531051692073355,
+        "max_error_pct": 0.0016735734778339229
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.010860111326116417,
+        "max_error_pct": 0.02038805031446822
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "TRXUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0034978785970196657,
+        "max_error_pct": 0.0069895157264077135
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.00979071452410496,
+        "max_error_pct": 0.02145338790360274
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ETCUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0006928401191985678,
+        "max_error_pct": 0.001628940849096594
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.00865677064263437,
+        "max_error_pct": 0.022161260735442667
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "XLMUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0013232826701847777,
+        "max_error_pct": 0.002631434680122613
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.009088148950009423,
+        "max_error_pct": 0.02307029860526555
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "APTUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0008580206149633174,
+        "max_error_pct": 0.001751751751744024
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.00782075185069564,
+        "max_error_pct": 0.022581844636637705
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ARBUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0015320644216720858,
+        "max_error_pct": 0.003013344812741181
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.010891764081666366,
+        "max_error_pct": 0.022835770604490158
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "OPUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0012636168538748827,
+        "max_error_pct": 0.00264729421904919
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0125376805047539,
+        "max_error_pct": 0.024363392774640058
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "INJUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0008402171197796626,
+        "max_error_pct": 0.0021608516917903664
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.010772787314133891,
+        "max_error_pct": 0.021911650736239352
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "SUIUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0013853278925279877,
+        "max_error_pct": 0.0023377862595541643
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.013337296348003846,
+        "max_error_pct": 0.024753393588561323
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "TIAUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0007064484398688897,
+        "max_error_pct": 0.002194518373266341
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.014386336819016687,
+        "max_error_pct": 0.024067788772774712
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "SEIUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0007816059448217949,
+        "max_error_pct": 0.00176900699739857
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.009430952905054024,
+        "max_error_pct": 0.019706186971935047
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "RUNEUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0013010055608941862,
+        "max_error_pct": 0.0030118591955674567
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.008943985476267402,
+        "max_error_pct": 0.018926534492136327
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "AAVEUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0011154982570649175,
+        "max_error_pct": 0.0023727351164848365
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.012006846219636547,
+        "max_error_pct": 0.02025177025962721
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "CRVUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0011648433636768374,
+        "max_error_pct": 0.0018233387358179698
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.010218117125748716,
+        "max_error_pct": 0.022151446600782165
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "SANDUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0013269792074555031,
+        "max_error_pct": 0.003823094969157559
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.011023019573302983,
+        "max_error_pct": 0.019190499964327756
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "MANAUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0011846214639787966,
+        "max_error_pct": 0.003713940231475643
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.008521808752565141,
+        "max_error_pct": 0.022127015602979583
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "GALAUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0013929203171780813,
+        "max_error_pct": 0.0032940846649731625
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.01509231505644193,
+        "max_error_pct": 0.02520476798638649
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "1000PEPEUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.001376344638587268,
+        "max_error_pct": 0.0032057703866827936
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.011309260226227691,
+        "max_error_pct": 0.021634317325558428
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "1000SHIBUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0010818628773223704,
+        "max_error_pct": 0.003114472764254028
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.010677333542224998,
+        "max_error_pct": 0.02021237492342287
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "WLDUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0008995480203055628,
+        "max_error_pct": 0.0019089173711406282
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.013006534464210517,
+        "max_error_pct": 0.020960896637611803
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ENAUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0015170670121522623,
+        "max_error_pct": 0.003716366879724653
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.01016284627757269,
+        "max_error_pct": 0.02228493508034113
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "JTOUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0009723371047765106,
+        "max_error_pct": 0.002448180186043203
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.013503413353732618,
+        "max_error_pct": 0.018945726172470145
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "PYTHUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0007996261441878261,
+        "max_error_pct": 0.003069786479303893
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.012983271426048049,
+        "max_error_pct": 0.02119598255582167
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "TAOUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0005024129274222577,
+        "max_error_pct": 0.0018354938625675388
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.009991171838680257,
+        "max_error_pct": 0.02267459734009991
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    },
+    "ORDIUSDT": {
+      "toptrader_position_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0006788075938346516,
+        "max_error_pct": 0.0012894906511906612
+      },
+      "global_account_ratio": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.009554593148780599,
+        "max_error_pct": 0.022554659498219554
+      },
+      "open_interest": {
+        "overlap": 30,
+        "bad": 0,
+        "median_error_pct": 0.0,
+        "max_error_pct": 0.0
+      }
+    }
+  }
+}

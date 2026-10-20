@@ -1,0 +1,202 @@
+{
+  "generated_utc": "2026-10-20T01:51:10.068618+00:00",
+  "protocol": "RESEARCH_PREREG_Q4_2026.md cell 3",
+  "universe": "discovery",
+  "panel_start": "2024-12-10",
+  "panel_end": "2026-07-31",
+  "panel_days": 599,
+  "n_perm": 200,
+  "cost_per_leg": 0.001,
+  "null_interpretation": "p_gross tests zero-cost Sharpe; p_net tests 10bps/leg Sharpe",
+  "data": {
+    "eligible_symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "DOGEUSDT",
+      "AVAXUSDT",
+      "LINKUSDT",
+      "NEARUSDT",
+      "ADAUSDT",
+      "LTCUSDT",
+      "BCHUSDT",
+      "DOTUSDT",
+      "ATOMUSDT",
+      "UNIUSDT",
+      "FILUSDT",
+      "TRXUSDT",
+      "ETCUSDT",
+      "XLMUSDT",
+      "APTUSDT",
+      "ARBUSDT",
+      "OPUSDT",
+      "INJUSDT",
+      "SUIUSDT",
+      "TIAUSDT",
+      "SEIUSDT",
+      "RUNEUSDT",
+      "AAVEUSDT",
+      "CRVUSDT",
+      "SANDUSDT",
+      "MANAUSDT",
+      "GALAUSDT",
+      "1000PEPEUSDT",
+      "1000SHIBUSDT",
+      "WLDUSDT",
+      "TONUSDT",
+      "ENAUSDT",
+      "JTOUSDT",
+      "PYTHUSDT",
+      "TAOUSDT",
+      "ORDIUSDT"
+    ],
+    "excluded_symbols": [
+      "MKRUSDT"
+    ],
+    "short_archive_days": {
+      "BTCUSDT": 1,
+      "ETHUSDT": 1,
+      "SOLUSDT": 1,
+      "BNBUSDT": 1,
+      "XRPUSDT": 1,
+      "DOGEUSDT": 1,
+      "AVAXUSDT": 1,
+      "LINKUSDT": 1,
+      "NEARUSDT": 1,
+      "ADAUSDT": 1,
+      "LTCUSDT": 1,
+      "BCHUSDT": 1,
+      "DOTUSDT": 1,
+      "ATOMUSDT": 1,
+      "UNIUSDT": 1,
+      "FILUSDT": 1,
+      "TRXUSDT": 1,
+      "ETCUSDT": 1,
+      "XLMUSDT": 1,
+      "APTUSDT": 1,
+      "ARBUSDT": 1,
+      "OPUSDT": 1,
+      "INJUSDT": 1,
+      "SUIUSDT": 1,
+      "TIAUSDT": 1,
+      "SEIUSDT": 1,
+      "RUNEUSDT": 1,
+      "AAVEUSDT": 1,
+      "MKRUSDT": 139,
+      "CRVUSDT": 1,
+      "SANDUSDT": 1,
+      "MANAUSDT": 1,
+      "GALAUSDT": 1,
+      "1000PEPEUSDT": 1,
+      "1000SHIBUSDT": 1,
+      "WLDUSDT": 1,
+      "TONUSDT": 40,
+      "ENAUSDT": 1,
+      "JTOUSDT": 1,
+      "PYTHUSDT": 1,
+      "TAOUSDT": 1,
+      "ORDIUSDT": 1
+    },
+    "valid_symbol_days": 24479
+  },
+  "cells": {
+    "D7": {
+      "net": {
+        "n_days": 592,
+        "start": "2024-12-17",
+        "sharpe": -0.9502312419407662,
+        "ann_ret_pct": -12.996890365835931,
+        "total_ret_pct": -20.22503944444566,
+        "half_returns_pct": [
+          -15.575072946498947,
+          -5.507812278001579
+        ],
+        "turnover": 0.11969782282282283
+      },
+      "gross_sharpe": -0.6304518991595329,
+      "stress_ann_ret_pct": -17.365860898868966,
+      "rho_funding_rank": 0.25246179169800703,
+      "rho_top_crowd_rank": 0.1638826240241527,
+      "carry_sharpe_same_days": 1.7842690783572583,
+      "blend_sharpe": 0.941650439147462,
+      "blend_gain": -0.8426186392097963,
+      "cheap_checks": {
+        "gross_sharpe_ge_0_5": false,
+        "rank_D_funding_le_0_6": true,
+        "rank_top_crowd_le_0_9": true
+      }
+    },
+    "D30": {
+      "net": {
+        "n_days": 569,
+        "start": "2025-01-09",
+        "sharpe": 0.13010156798027894,
+        "ann_ret_pct": 1.8247202134308749,
+        "total_ret_pct": 1.3368816968840402,
+        "half_returns_pct": [
+          2.0575994438756906,
+          -0.7061872422230775
+        ],
+        "turnover": 0.051381566100371014
+      },
+      "gross_sharpe": 0.26381485987878706,
+      "stress_ann_ret_pct": -0.05070694923267052,
+      "rho_funding_rank": 0.23132440485236647,
+      "rho_top_crowd_rank": 0.1638826240241527,
+      "carry_sharpe_same_days": 1.8489601255441235,
+      "blend_sharpe": 1.5340663922279727,
+      "blend_gain": -0.3148937333161508,
+      "cheap_checks": {
+        "gross_sharpe_ge_0_5": false,
+        "rank_D_funding_le_0_6": true,
+        "rank_top_crowd_le_0_9": true
+      }
+    },
+    "RESIDUAL": {
+      "net": {
+        "n_days": 592,
+        "start": "2024-12-17",
+        "sharpe": 0.323832701707322,
+        "ann_ret_pct": 4.946448868105138,
+        "total_ret_pct": 6.343478175775119,
+        "half_returns_pct": [
+          5.356096821975265,
+          0.9371848270614658
+        ],
+        "turnover": 0.21074981231231232
+      },
+      "gross_sharpe": 0.8265701672773975,
+      "stress_ann_ret_pct": -2.7459192812942654,
+      "rho_funding_rank": 0.025436765344138128,
+      "rho_top_crowd_rank": 0.1638826240241527,
+      "carry_sharpe_same_days": 1.7842690783572583,
+      "blend_sharpe": 1.4600466704335515,
+      "blend_gain": -0.3242224079237068
+    },
+    "CROWD_ONLY": {
+      "net": {
+        "n_days": 592,
+        "start": "2024-12-17",
+        "sharpe": 0.6985804390995839,
+        "ann_ret_pct": 10.583516861162629,
+        "total_ret_pct": 16.54472010959114,
+        "half_returns_pct": [
+          2.780117405644811,
+          13.392281553465434
+        ],
+        "turnover": 0.11840746996996998
+      },
+      "gross_sharpe": 0.9834755959084652,
+      "stress_ann_ret_pct": 6.261644207258721,
+      "rho_funding_rank": -0.05813921065508386,
+      "rho_top_crowd_rank": 0.1638826240241527,
+      "carry_sharpe_same_days": 1.7842690783572583,
+      "blend_sharpe": 1.7233293777773757,
+      "blend_gain": -0.06093970057988263
+    }
+  },
+  "nominees": [],
+  "decision": "STOP_CHEAP_GATE"
+}

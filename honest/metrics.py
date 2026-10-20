@@ -143,7 +143,8 @@ def _missing_days(cached: pd.DataFrame | None, absent: set[str], wanted: list[da
 
 
 def fetch_metrics(symbol: str, days_back: int = 600, *, use_cache: bool = True,
-                  workers: int = 8, verbose: bool = False) -> pd.DataFrame:
+                  workers: int = 8, verbose: bool = False,
+                  end_day: date | None = None) -> pd.DataFrame:
     """Daily positioning metrics for one symbol, indexed by UTC date.
 
     Tops the per-symbol cache up rather than refetching it: only days that are neither
@@ -154,7 +155,9 @@ def fetch_metrics(symbol: str, days_back: int = 600, *, use_cache: bool = True,
     cached = pd.read_parquet(cache_path) if use_cache and cache_path.exists() else None
     absent = _load_absent(absent_path) if use_cache else set()
 
-    last_day = datetime.now(timezone.utc).date() - timedelta(days=1)
+    last_day = end_day or datetime.now(timezone.utc).date() - timedelta(days=1)
+    if last_day >= datetime.now(timezone.utc).date():
+        raise ValueError("metrics end_day must be a completed UTC day")
     wanted = [last_day - timedelta(days=i) for i in range(days_back)][::-1]
     todo = _missing_days(cached, absent, wanted)
 
@@ -184,13 +187,13 @@ def fetch_metrics(symbol: str, days_back: int = 600, *, use_cache: bool = True,
         return pd.DataFrame(columns=["day", "n_rows", *FIELDS])
     out = cached.copy()
     out["day"] = pd.to_datetime(out["day"])
-    keep = out["day"].dt.date >= wanted[0]
+    keep = (out["day"].dt.date >= wanted[0]) & (out["day"].dt.date <= last_day)
     return out.loc[keep].set_index("day").sort_index()
 
 
 def build_metrics_panel(symbols: list[str], field: str = "open_interest", days_back: int = 600,
                         *, min_days: int = 400, use_cache: bool = True, workers: int = 8,
-                        verbose: bool = True) -> pd.DataFrame:
+                        verbose: bool = True, end_day: date | None = None) -> pd.DataFrame:
     """Wide date x symbol panel of one metric. Plumbing only - no signal is built here.
 
     Symbols with fewer than min_days of history are dropped, the same rule build_panel
@@ -200,7 +203,8 @@ def build_metrics_panel(symbols: list[str], field: str = "open_interest", days_b
         raise ValueError(f"unknown field {field!r}; expected one of {FIELDS} (optionally + '_mean')")
     series: dict[str, pd.Series] = {}
     for i, symbol in enumerate(symbols, 1):
-        frame = fetch_metrics(symbol, days_back, use_cache=use_cache, workers=workers)
+        frame = fetch_metrics(symbol, days_back, use_cache=use_cache, workers=workers,
+                              end_day=end_day)
         if field not in frame.columns:
             continue
         column = frame[field].dropna()
@@ -284,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--warm", action="store_true", help="download and cache the archive for the whole universe")
     ap.add_argument("--verify", nargs="*", metavar="SYMBOL", help="compare the archive against the 30-day REST endpoint")
     ap.add_argument("--days", type=int, default=600)
+    ap.add_argument("--end-day", type=date.fromisoformat, default=None,
+                    help="last completed UTC day; pin a research panel to a fixed window")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--symbols", default="", help="comma-separated override of the universe")
     args = ap.parse_args(argv)
@@ -305,7 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         started = time.time()
         total = 0
         for i, symbol in enumerate(symbols, 1):
-            frame = fetch_metrics(symbol, args.days, workers=args.workers)
+            frame = fetch_metrics(symbol, args.days, workers=args.workers,
+                                  end_day=args.end_day)
             total += len(frame)
             print(f"[{i:>2}/{len(symbols)}] {symbol:14s} {len(frame):>4} days"
                   f"{'' if frame.empty else '  ' + str(frame.index.min().date()) + ' -> ' + str(frame.index.max().date())}"

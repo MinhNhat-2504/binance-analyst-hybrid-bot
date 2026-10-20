@@ -99,7 +99,7 @@ Code chặn giữa hai tầng: nghiên cứu chỉ được ghi vào file target
 | Storage | SQLite (`.execution/*.sqlite3`) | Audit một file, không cần server, đọc được bằng `sqlite3` khi engine đã chết |
 | Storage | JSON + sha256 (config, ceilings, target) | Khóa bằng hash để tune giữa chừng phải là một commit có review, không phải một lần sửa file |
 | Infra | Windows Task Scheduler + `run_hidden.vbs` | Máy của tác giả là laptop Windows. Sự cố 31/08 (console bị đóng làm chết process) là lý do chạy ẩn qua vbs |
-| Testing | pytest, 250 test | Fake exchange (`TrackingClient`) thay đổi inventory chỉ khi lệnh khớp thật, nên test được cả đường flatten và halt |
+| Testing | pytest, 256 test | Fake exchange (`TrackingClient`) thay đổi inventory chỉ khi lệnh khớp thật, nên test được cả đường flatten và halt |
 
 ## Cách chạy
 
@@ -118,7 +118,7 @@ python run_honest_harness.py --quick   # đo lại tín hiệu 15m cũ (kết lu
 python run_daily_lab.py                # lab khung ngày, mỗi cell so với null riêng, ~10 phút lần đầu
 python run_carry_holdout.py            # CARRY-7d trên 33 symbol hold-out
 python run_carry_paper.py              # book paper ngày hôm nay; bỏ vài ngày nó tự bù
-pytest                                 # 250 test, ~1 phút
+pytest                                 # 256 test, ~1 phút
 ```
 
 Testnet cần key Binance Demo Trading. Tạo file `.env.testnet` (đã gitignore) với ba biến:
@@ -168,9 +168,11 @@ Mọi số dưới đây có file gốc trong `reports/` hoặc ledger trong rep
 
 **Pipeline OOS độc lập** (`CLEAN_OOS_FINDINGS.md`, `clean_research/`): CARRY-7d có PnL replay dương sau phí, nhưng CI 95% của các khối 120 ngày sau cutoff cắt 0. `reconcile_evaluators.py` cắt chuỗi của `honest/` đúng mốc đó và ra cùng số (+5.59 vs +4.97 bps/ngày, CI cắt 0 y hệt): hai bộ đo không mâu thuẫn, chỉ hỏi hai câu khác nhau. Với độ lệch chuẩn ngày ~96 bps, một khối 120 ngày chỉ có 18% xác suất tự chứng minh được kể cả khi edge là thật; toàn bộ 592 ngày cũng chỉ 65%. Bằng chứng thật cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, lặp trên hai universe rời nhau. Chi tiết trong `HONEST_FINDINGS.md`.
 
-**Paper trading** (`carry_paper_ledger.csv`, từ 2026-08-03): ngày 52/60, +8.14%, Sharpe annualized 3.33, max drawdown -2.9%. Độ lệch chuẩn ngày 0.70% nên 1 sigma một tháng khoảng 3.8%; 52 ngày chưa đủ để kết luận. Phân bổ theo đồng (`analyze_paper_attribution.py`, khớp ledger từng ngày): chân long +22.6%, chân short −14.6%, funding chỉ +0.9%; ba tên long (WLD, BCH, APT) chiếm 45% lãi gộp và bỏ ba tên đó là −6.4%. Con số +8% là bằng chứng tracking, không phải bằng chứng carry có lãi.
+**Paper trading** (`carry_paper_ledger.csv`, từ 2026-08-03): đến 18/10 có 77 ngày, +10,89%, Sharpe annualized 2,80, max drawdown −4,1%. Đối soát từng kỳ funding thật đủ 77/77 ngày cho lợi nhuận điều chỉnh +10,886% (`reports/paper_funding_audit.json`). Phân bổ theo đồng ở mốc 52 ngày (`analyze_paper_attribution.py`): chân long +22,6%, chân short −14,6%, funding chỉ +0,9%; đây là ảnh chụp lịch sử, không phải phân bổ của toàn kỳ 77 ngày.
 
-**Testnet** (`.execution/testnet_execution.sqlite3`, `execution_quality.csv`): 3 ngày COMPLETE, 90 lệnh khớp thật. Shortfall so với giá open paper giả định: trung bình -5.2bps, trung vị +3.7bps, p90 +62.6bps. Phí thật trên sàn demo: taker 4bps, maker 2bps, thấp hơn giả định 10bps.
+**Testnet** (`reports/execution_fee_audit.json`): đến 20/10 có 13 phiên COMPLETE, đối chiếu đủ 338/338 lệnh và 406 giao dịch trên Binance Demo Futures. Hoa hồng 4,16 bps theo notional, tỷ trọng maker 0%; shortfall có dấu so với open paper +9,17 bps theo notional, tổng chi phí +13,32 bps so với giả định paper 10 bps/chân. `execution_quality.csv` đã được dựng lại đủ 338 lệnh; cổng khóa dùng mean theo lệnh +8,99 bps và vẫn PASS. Phép đo demo chưa dự báo chi phí live. Xem `EXECUTION_COST_EXPERIMENT.md` để thử maker trên tài khoản riêng.
+
+**Q4 research** (`HONEST_FINDINGS.md`): LOWVOL-XS đã dừng ở discovery. SMART-VS-CROWD đã tải đủ archive discovery, đối chiếu archive/REST qua, rồi dừng theo cổng Sharpe gộp <0,5 đã đăng ký (D7 −0,63; D30 +0,26). Không mở hold-out của hai cell này.
 
 **Bot 15m cũ** (`reports/honest_harness_CLEAN.json`, 131 feature, 540 ngày, 8 fold, 20 permutation): SHORT hơn null +4.94bps, p=0.19; LONG +0.85bps, p=0.476; phí khả thi thấp nhất 12bps. Đã đóng.
 
@@ -178,7 +180,7 @@ Mọi số dưới đây có file gốc trong `reports/` hoặc ledger trong rep
 
 **Các hướng đã đo và đóng** (`HONEST_FINDINGS.md`): rebalance 8h (Sharpe 0.84 so với 1.85), basis carry spot-perp (funding không vượt phí 4 chân), vol-targeting overlay (ngày tệ nhất luôn tệ hơn).
 
-Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và chấm bằng `gate_report.py` (13 điều kiện). Kết quả ngày 25/09: NOT-YET, thiếu ngày paper và 17 lần testnet COMPLETE.
+Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và chấm bằng `gate_report.py` (13 điều kiện). Kết quả ngày 20/10: NOT-YET, còn thiếu 7 phiên testnet COMPLETE; mốc sớm nhất 27/10 nếu mỗi ngày đều COMPLETE. Chi phí all-in 13,32 bps là cảnh báo kinh tế bổ sung và chưa thuộc thước đo shortfall đã khóa của cổng.
 
 ## Các quyết định thiết kế chính
 
@@ -207,20 +209,20 @@ Cổng bật live được ghi trước trong `carry_paper_config_v1.json` và c
 Hạn chế đọc từ code:
 
 1. Bằng chứng cho CARRY-7d là t ≈ 2.3 trên ~590 ngày, không phải áp đảo, và kỳ paper 60 hoặc 90 ngày về mặt thống kê không thể tự chứng minh edge (nửa CI ~24 bps ở 60 ngày). Paper chỉ kiểm được tracking, không kiểm được edge.
-2. Lãi paper tập trung và đến từ chân sai: một ngày chiếm 33.5% tổng, ba đồng long chiếm 45% lãi gộp, 21/39 đồng âm. Chân short, tức toàn bộ edge trong 600 ngày backtest, lỗ trên discovery từ 03/04/2026 đến nay. Chân long lịch sử lỗ 7 đến 15%/năm và chỉ là hedge; short-only + hedge BTC là ứng viên pre-reg Q1/2027, không chạy trước đó.
-3. Bằng chứng thực thi mỏng: 10 ngày testnet COMPLETE, nhưng mới 3 khoảng 24 giờ sạch để đo tracking (lệch −11 bps/ngày so với paper, mẫu quá nhỏ để kết luận); shortfall có độ lệch chuẩn 67bps nên sai số chuẩn của trung bình khoảng 7bps, chưa phân biệt được phí thật 5bps hay 20bps. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn, rồi thêm 5 ngày vì một lần drift gate từ chối (không đặt lệnh nào) cũng ghi marker chặn. Từ 03/10 chỉ trạng thái có thể có vị thế lệch mới chặn; từ chối trước khi đặt lệnh chỉ ghi NOTICE.
+2. Lãi paper tập trung: phân bổ ở mốc 52 ngày cho thấy một ngày chiếm 33,5% tổng, ba đồng long chiếm 45% lãi gộp, 21/39 đồng âm. Chân long lịch sử lỗ 7 đến 15%/năm và chỉ là hedge; quy tắc thăm dò short-only + BTC hedge đã chạy trên hai tập từng được xem, thua v1 ở cả hai (`reports/short_btc_hedge_exploratory.json`). Không thay v1 dựa trên mẫu này.
+3. Bằng chứng thực thi còn mỏng: 13 ngày testnet COMPLETE, 338 lệnh; chi phí hoa hồng cộng shortfall +13,32 bps theo notional vượt giả định paper 10 bps/chân. Tỷ trọng maker 0%, nên cần thử nghiệm tách biệt trên tài khoản Demo Futures riêng. Tháng 9 mất 20 ngày testnet vì marker ATTENTION nằm trong thư mục ẩn không ai nhìn, rồi thêm 5 ngày vì một lần drift gate từ chối (không đặt lệnh nào) cũng ghi marker chặn. Từ 03/10 chỉ trạng thái có thể có vị thế lệch mới chặn; từ chối trước khi đặt lệnh chỉ ghi NOTICE.
 4. Canary signal-health ba tuần liền nghiêng về Bybit (Sharpe theo weight Binance trên 180 ngày giảm 1.60 xuống 1.02). Chưa có luật tự động nào dừng paper khi canary xấu đi; quyết định vẫn thủ công.
 5. Đã chạy được trong Docker và có scheduler riêng, nhưng mới chỉ thử trên máy tác giả; chưa từng chạy một ngày thật trên server Linux. Toast Windows trong `notify_markers.py` là best-effort, trên Linux chỉ còn file `status.txt` và healthcheck.
 6. Vòng live không người trực (`run_carry_live_daily.py`) đã viết và test bằng sàn giả, nhưng chưa từng chạy một ngày thật; tháng đầu live vẫn là chạy tay theo checklist, và file ủy quyền `unattended_live_v1.json` chỉ được viết sau đó.
 7. Order style `MAKER_THEN_MARKET` đã viết và test nhưng chưa từng chạy trên sàn; mặc định vẫn MARKET. Tổng thời gian chờ maker bị chặn ở nửa TTL kill-switch, chưa đo trên fill thật.
 8. Universe 42 symbol cố định từ tháng 8; MKRUSDT và TONUSDT đã SETTLING trên live, được zombie guard loại nhưng chưa có cơ chế thay symbol.
-9. Sáu symbol trả funding mỗi 4h (TIA, ENA, JTO, PYTH, TAO, ORDI) chiếm 17.9% số chỗ trong rổ paper và gần như chỉ ở bên short (PYTH 33/52 ngày). Paper giả định 3 kỳ mỗi ngày; phần backtest loại chúng ra chạy 01/10 (`measure_funding_interval.py`).
+9. Sáu symbol trả funding mỗi 4h (TIA, ENA, JTO, PYTH, TAO, ORDI) chiếm 17,9% số chỗ trong rổ paper ở mốc 52 ngày và gần như chỉ ở bên short. Đối soát theo kỳ settle thật đã hoàn tất cho toàn bộ 77 ngày paper đến 18/10; sai khác do cách gán kỳ là −0,70 bps cộng dồn (`reports/paper_funding_audit.json`).
 
 Việc làm tiếp, theo thứ tự:
 
-1. Đủ 20 ngày testnet COMPLETE trước mốc ngày 90 (01/11/2026) để cổng chấm được phần thực thi; mọi thứ khác phụ thuộc vào đây.
-2. Chạy hai cell Q4 còn lại (low-vol cross-section có hedge beta, phân kỳ top-trader với đám đông) trên dữ liệu `honest/metrics.py` đã cache. Cell hysteresis đã chạy 01/10 và đóng theo luật đăng ký (turnover chỉ giảm 21%, ngưỡng 25%) dù lãi ròng tăng 2.8 điểm; xem `RESEARCH_PREREG_Q4_2026.md`.
-3. Đo lệch do 6 symbol trả funding mỗi 4h (hạn chế 8) trên chính ledger paper, để biết nó ăn bao nhiêu bps khi lên live.
+1. Đủ 20 ngày testnet COMPLETE; hiện 13/20, mốc sớm nhất 27/10 nếu mỗi ngày đều COMPLETE.
+2. Tiếp tục đo chi phí và tracking trên các phiên COMPLETE mới. Sau khi cấu hình API key riêng, chạy preflight và pilot maker theo `EXECUTION_COST_EXPERIMENT.md` trên tài khoản Demo Futures tách biệt. Không dùng tài khoản bot hằng ngày.
+3. Giữ ba cell Q4 đã dừng ở discovery theo luật đăng ký; giữ hold-out chưa mở. Kết quả short + BTC chỉ là thăm dò lịch sử âm so với v1, nên chưa có ứng viên thay thế. Xem `RESEARCH_PREREG_Q4_2026.md` và `HONEST_FINDINGS.md`.
 
 ## Cấu trúc thư mục
 
@@ -228,11 +230,14 @@ Việc làm tiếp, theo thứ tự:
 honest/                     harness đo edge: data, features, labels, cv, evaluate, execution sim, funding, daily lab, basis, crossex, metrics
 clean_research/             pipeline OOS độc lập: schema, ledger, model, carry, intraday_carry
 execution/                  engine đặt lệnh, REST client, contracts (ceilings sha256), targets
-tests/                      250 test; TrackingClient là fake exchange
+tests/                      256 test; TrackingClient là fake exchange
 reports/                    JSON kết quả của mọi lab; bằng chứng cho HONEST_FINDINGS.md
 archive/legacy_15m/         bot 15m cũ, giữ nguyên để đối chiếu; không tin số trong đó
 run_daily_lab.py            grid khung ngày đăng ký trước (UNIVERSE 42)
 run_carry_holdout.py        CARRY-7d trên HOLDOUT_UNIVERSE 33
+run_lowvol_xs_lab.py        cell LOWVOL-XS Q4 đã đăng ký; discovery trước, hold-out có cổng
+run_smart_vs_crowd_lab.py    cell SMART-VS-CROWD Q4; discovery đã dừng, hold-out có cổng
+audit_smart_source.py        đối chiếu metrics archive[D] với REST[D+1] (chỉ đọc)
 run_carry_paper.py          executor paper, config khóa hash
 export_carry_targets.py     nghiên cứu -> target file, có cross-check
 run_carry_testnet_daily.py  vòng lặp không người trực (lock, self-release, DD guard, marker)
@@ -247,6 +252,11 @@ run_canaries.py             signal-health và funding-regime hằng tuần
 backup_state.py             backup ledger/audit/state mỗi sáng vào backups/ (giữ 30 ngày)
 export_income.py            income của sàn theo tháng -> reports/income_<env>_<YYYY-MM>.csv
 analyze_paper_attribution.py  PnL paper theo từng đồng, mức tập trung; tự kiểm khớp ledger
+audit_paper_funding.py      đối soát funding paper theo từng kỳ settlement (chỉ đọc)
+audit_execution_fees.py     đối chiếu phí và shortfall trên orderId COMPLETE (chỉ đọc)
+audit_execution_opportunity.py  đối soát phí maker và trần tiết kiệm chỉ từ phí (chỉ đọc)
+probe_maker_account.py      preflight chỉ đọc tài khoản Demo Futures thử maker riêng
+explore_short_btc_hedge.py  thăm dò quy tắc short + BTC, không tạo targets
 analyze_backtest_legs.py    backtest 600 ngày tách chân long / chân short, theo nửa và theo cutoff
 run_daily.py                entry point mọi job: paper | testnet | canary | status
 run_scheduler.py            scheduler UTC cho container hoặc Linux không cron
@@ -260,6 +270,15 @@ EXECUTION_RUNBOOK.md        bảng status và việc phải làm
 GO_LIVE_CHECKLIST.md        khung vốn, cổng, tiêu chí dừng, lịch
 RESEARCH_PREREG_Q4_2026.md  ba cell tháng 10, khóa trước khi chạy
 ```
+
+## Đối soát funding của kỳ paper
+
+`python audit_paper_funding.py` đọc ledger và cache funding, rồi ghi
+`reports/paper_funding_audit.json`. Script so sánh quy tắc chia 1/3–2/3 của
+paper với từng mốc settlement thật; kết quả `partial` có mã thoát 2 và chỉ
+phản ánh những ngày đủ dữ liệu. `python audit_paper_funding.py --refresh` lấy
+lịch sử funding công khai mới từ Binance trước khi đối soát toàn kỳ. Việc này
+không sửa luật giao dịch, ledger hay trạng thái paper đang khóa.
 
 ## Ghi nhận và giấy phép
 

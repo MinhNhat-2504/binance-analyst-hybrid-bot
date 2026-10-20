@@ -1,103 +1,135 @@
-"""Paper-vs-executed fill quality: the real cost model, from real fills.
+"""Rebuild fill quality for every COMPLETE run from the execution audit.
 
-The paper record books every fill at the daily OPEN. The executor fills at ~00:20 UTC
-market. The gap between those two prices, signed by side, is the implementation
-shortfall the paper record silently assumes away - and the number that decides whether
-the live cost assumptions (10bps/leg) were honest.
-
-    python analyze_execution_quality.py                      # testnet audit (default)
-    python analyze_execution_quality.py --audit .execution/live_execution.sqlite3
-
-Reads FILLED legs of non-dry-run runs, joins each with that day's daily open from the
-public klines, and reports per-leg and aggregate:
-
-    shortfall_bps = side_sign * (avg_fill / day_open - 1) * 1e4     (+ = paid worse than paper)
-    slippage_bps  = as recorded by the engine vs its submit-time re-quote
-
-Empty-safe: prints a clear message until COMPLETE runs exist. Appends execution_quality.csv
-so the series accumulates run by run.
+One CSV row is one exchange order, including split orders. Daily opens are
+requested for exact historical dates, so a stale rolling cache cannot omit
+old or recent runs. The previous CSV is replaced only when all opens exist.
+This script never places orders.
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sqlite3
-import sys
+import tempfile
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pandas as pd
 
+from honest.data import _get
+
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-
-from honest.data import fetch_klines  # noqa: E402
-
+DEFAULT_AUDIT = ROOT / ".execution" / "testnet_execution.sqlite3"
 OUT = ROOT / "execution_quality.csv"
-COLS = ("fill_date", "run_id", "symbol", "side", "reason", "qty", "avg_fill", "day_open",
-        "shortfall_bps", "engine_slippage_bps")
+COLS = ("fill_date", "run_id", "order_id", "symbol", "side", "reason", "qty",
+        "avg_fill", "day_open", "shortfall_bps", "engine_slippage_bps")
+
+
+def _ms(day: date) -> int:
+    return int(datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def daily_opens(symbol: str, first: date, last: date) -> dict[date, float]:
+    """Fetch a pinned range, in chunks small enough for Binance's kline limit."""
+    opens = {}
+    cursor = first
+    while cursor <= last:
+        end = min(last, cursor + timedelta(days=999))
+        query = urlencode({"symbol": symbol, "interval": "1d", "startTime": _ms(cursor),
+                           "endTime": _ms(end + timedelta(days=1)) - 1, "limit": 1000})
+        bars = _get(f"https://fapi.binance.com/fapi/v1/klines?{query}")
+        for bar in bars:
+            day = datetime.fromtimestamp(int(bar[0]) / 1000, tz=timezone.utc).date()
+            opens[day] = float(bar[1])
+        cursor = end + timedelta(days=1)
+    return opens
+
+
+def load_legs(audit: Path) -> list[tuple]:
+    with sqlite3.connect(f"file:{audit.as_posix()}?mode=ro", uri=True) as conn:
+        return conn.execute(
+            "SELECT r.run_id,substr(r.started_utc,1,10),l.order_id,l.symbol,l.side,l.reason,"
+            "l.quantity,l.avg_fill_price,l.fill_slippage_bps "
+            "FROM execution_legs l JOIN execution_runs r ON l.run_id=r.run_id "
+            "WHERE r.dry_run=0 AND r.status='COMPLETE' AND l.status='FILLED' "
+            "AND l.order_id!='' AND l.reason!='emergency_flatten' AND l.avg_fill_price>0 "
+            "ORDER BY r.started_utc,l.sequence"
+        ).fetchall()
+
+
+def build_rows(legs: list[tuple], open_lookup) -> list[dict]:
+    """Fail closed if any COMPLETE order cannot be priced."""
+    dates_by_symbol: dict[str, list[date]] = defaultdict(list)
+    for _, day, _, symbol, *_ in legs:
+        dates_by_symbol[symbol].append(date.fromisoformat(day))
+    opens = {symbol: open_lookup(symbol, min(days), max(days))
+             for symbol, days in dates_by_symbol.items()}
+    rows = []
+    seen = set()
+    for run_id, day, order_id, symbol, side, reason, qty, avg_fill, slip in legs:
+        key = (run_id, symbol, str(order_id))
+        if key in seen:
+            raise ValueError(f"duplicate exchange order in audit: {key}")
+        seen.add(key)
+        day_open = opens[symbol].get(date.fromisoformat(day))
+        if not day_open or day_open <= 0:
+            raise RuntimeError(f"missing daily open for {symbol} {day}; keeping previous report")
+        signed = (1 if side == "BUY" else -1) * (float(avg_fill) / day_open - 1) * 10_000
+        rows.append(dict(zip(COLS, (day, run_id, order_id, symbol, side, reason, qty,
+                                    float(avg_fill), day_open, round(signed, 6),
+                                    slip if slip is not None else ""))))
+    return rows
+
+
+def write_atomic(rows: list[dict], output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", newline="", encoding="utf-8", delete=False,
+                                         dir=output.parent, prefix=f".{output.stem}.", suffix=".tmp") as fh:
+            temp_path = Path(fh.name)
+            writer = csv.DictWriter(fh, fieldnames=COLS)
+            writer.writeheader()
+            writer.writerows(rows)
+        os.replace(temp_path, output)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--audit", default=str(ROOT / ".execution" / "testnet_execution.sqlite3"))
-    args = ap.parse_args()
-    if not Path(args.audit).exists():
-        print("No audit DB yet - nothing to analyze.")
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--audit", type=Path, default=DEFAULT_AUDIT)
+    parser.add_argument("--out", type=Path)
+    args = parser.parse_args()
+    if args.out is None:
+        if args.audit.resolve() != DEFAULT_AUDIT.resolve():
+            parser.error("--out is required when --audit is not the default testnet audit")
+        args.out = OUT
+    if not args.audit.exists():
+        print("No audit DB yet - nothing to analyze")
         return 0
-    conn = sqlite3.connect(args.audit)
-    legs = conn.execute(
-        "SELECT r.run_id, substr(r.started_utc,1,10), l.symbol, l.side, l.reason, l.quantity, "
-        "l.avg_fill_price, l.fill_slippage_bps "
-        "FROM execution_legs l JOIN execution_runs r ON r.run_id=l.run_id "
-        "WHERE r.dry_run=0 AND l.status='FILLED' AND l.avg_fill_price > 0 "
-        "ORDER BY r.started_utc, l.sequence"
-    ).fetchall()
+    legs = load_legs(args.audit)
     if not legs:
-        print("No filled legs in the audit yet (no COMPLETE/partial runs). Re-run after the "
-              "daily rehearsals accumulate - the analysis activates by itself.")
+        print("No COMPLETE filled orders yet")
         return 0
-
-    already = set()
-    if OUT.exists():
-        with OUT.open(encoding="utf-8") as fh:
-            already = {(r["run_id"], r["symbol"], r["reason"]) for r in csv.DictReader(fh)}
-
-    opens: dict[str, pd.Series] = {}
-    rows = []
-    for run_id, day, symbol, side, reason, qty, avg_fill, slip in legs:
-        if (run_id, symbol, reason) in already:
-            continue
-        if symbol not in opens:
-            k = fetch_klines(symbol, "1d", 90, use_cache=True)
-            idx = pd.to_datetime(k["Open time"]).dt.normalize()
-            opens[symbol] = k.set_index(idx)["Open"]
-        day_ts = pd.Timestamp(day)
-        if day_ts not in opens[symbol].index:
-            continue
-        day_open = float(opens[symbol].loc[day_ts])
-        sign = 1.0 if side == "BUY" else -1.0
-        shortfall = sign * (float(avg_fill) / day_open - 1.0) * 1e4
-        rows.append(dict(zip(COLS, (day, run_id, symbol, side, reason, qty,
-                                    float(avg_fill), day_open, round(shortfall, 2),
-                                    slip if slip is not None else ""))))
-
-    if rows:
-        new_file = not OUT.exists()
-        with OUT.open("a", newline="", encoding="utf-8") as fh:
-            w = csv.DictWriter(fh, fieldnames=COLS)
-            if new_file:
-                w.writeheader()
-            w.writerows(rows)
-
-    df = pd.read_csv(OUT)
-    print(f"legs analyzed: {len(df)} across {df.run_id.nunique()} run(s), {df.fill_date.nunique()} day(s)")
-    s = df.shortfall_bps.astype(float)
-    print(f"shortfall vs paper open:  mean {s.mean():+.1f}bps  median {s.median():+.1f}  p90 {s.quantile(.9):+.1f}  worst {s.max():+.1f}")
-    print(f"  (+ = executed worse than the paper assumption; sustained mean >> 10bps means the live cost model must be raised)")
-    per_sym = df.groupby("symbol").shortfall_bps.agg(["count", "mean"]).sort_values("mean", ascending=False)
-    print("\nworst symbols:")
-    print(per_sym.head(5).round(1).to_string())
-    print(f"\nappended -> {OUT.name}")
+    rows = build_rows(legs, daily_opens)
+    write_atomic(rows, args.out)
+    df = pd.DataFrame(rows)
+    shortfall = df.shortfall_bps.astype(float)
+    notional = df.qty.astype(float) * df.avg_fill.astype(float)
+    weighted = float((shortfall * notional).sum() / notional.sum())
+    engine = pd.to_numeric(df.engine_slippage_bps, errors="coerce")
+    valid = engine.notna()
+    mid = float((engine[valid] * notional[valid]).sum() / notional[valid].sum()) if valid.any() else float("nan")
+    print(f"COMPLETE exchange orders: {len(df)} across {df.run_id.nunique()} run(s)")
+    print(f"shortfall vs paper open: equal-order mean {shortfall.mean():+.2f}bps; "
+          f"notional-weighted {weighted:+.2f}bps")
+    print(f"submit-time mid slippage, notional-weighted: {mid:+.2f}bps")
+    print(f"-> {args.out}")
     return 0
 
 

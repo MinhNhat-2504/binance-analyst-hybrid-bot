@@ -116,6 +116,20 @@ def test_cache_tops_up_instead_of_refetching(cache, monkeypatch):
     assert len(out) == 2
 
 
+def test_fixed_end_day_fetches_the_registered_window_only(cache, monkeypatch):
+    d1, d2, d3 = date(2026, 9, 1), date(2026, 9, 2), date(2026, 9, 3)
+    calls: list[tuple[str, date]] = []
+    monkeypatch.setattr(m, "fetch_metrics_day",
+                        _serve({d1: _day_frame("BTCUSDT", d1), d2: _day_frame("BTCUSDT", d2),
+                                d3: _day_frame("BTCUSDT", d3)}, calls))
+    monkeypatch.setattr(m, "datetime", _FrozenDatetime(date(2026, 9, 4)))
+    m.fetch_metrics("BTCUSDT", days_back=3)
+    calls.clear()
+    out = m.fetch_metrics("BTCUSDT", days_back=2, end_day=d2)
+    assert list(out.index.date) == [d1, d2]
+    assert calls == []
+
+
 def test_today_is_never_included(cache, monkeypatch):
     """Today's file does not exist until the day closes; half a day would be lookahead."""
     calls: list[tuple[str, date]] = []

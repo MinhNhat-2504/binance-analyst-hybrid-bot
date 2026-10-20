@@ -231,7 +231,119 @@ Sharpe riêng chân short: +0.99 discovery, +1.40 hold-out, dương ở cả hai
 Hệ quả, nói thẳng:
 
 1. **Tháng 9 paper lãi nhờ chân yếu, chân mạnh đang lỗ.** Từ 03/04, chân short trên discovery lỗ −38.6%/năm (giá −35%), chân long lãi +59%. Cùng hình với 52 ngày paper. Đây không phải nhiễu ngắn, nó kéo dài từ tháng 4, và trùng với canary ba tuần nghiêng Bybit. Trên hold-out thì chân short vẫn dương sau cutoff (+43%), nên chưa thể kết luận edge chết; nhưng edge trên đúng 42 tên đang paper thì đã âm gần sáu tháng.
-2. **Đòn bẩy lợi nhuận lớn nhất còn lại là chân long**, không phải chân short. Nếu chân long lỗ 7 đến 15%/năm chỉ để giữ beta trung tính, thì câu hỏi đáng đăng ký cho Q1/2027 là: short-only + hedge BTC thay vì long rổ crowded-short. Không được chạy bây giờ: vừa thấy số mà thêm cell là post-hoc, và Q4 đã khóa ba cell. Ghi vào danh sách chờ pre-reg Q1.
+2. **Chân long là nguồn giảm kết quả lịch sử.** Nếu chân long lỗ 7 đến 15%/năm chỉ để giữ beta trung tính, câu hỏi cho Q1/2027 là short-only + hedge BTC. Quy tắc cố định được thăm dò ngày 20/10 theo yêu cầu riêng; kết quả ở cuối tài liệu thua v1 trên cả hai tập đã lộ, nên không trở thành ứng viên thay thế.
 3. **Không tune, không bỏ chân nào.** Bỏ chân long sau khi thấy nó lỗ là đúng cái repo này từng làm sai; và một rổ short-only trong đợt alt tăng như 6 tháng qua sẽ lỗ nặng hơn nhiều so với −14.6%.
 
 File: `analyze_backtest_legs.py`, `reports/backtest_legs.json`.
+
+## 20/10/2026 — đối soát funding toàn kỳ và độ nhạy phí của paper
+
+Đối soát funding theo mốc settlement thật bằng `audit_paper_funding.py` đã tải
+đủ và lưu cache có cửa sổ cố định cho **77/77 ngày paper** (03/08–18/10).
+Chênh lệch cộng dồn do gán settlement theo trọng số cũ/mới là **−0,70 bps**;
+lợi nhuận ghi sổ +10,894% thành +10,886%. Chạy lại offline cho cùng kết quả.
+Đây chỉ sửa phân bổ funding theo thời điểm settle, chưa sửa giá khớp hay phí.
+File: `reports/paper_funding_audit.json`.
+
+Ảnh chụp ledger 76 ngày trước đợt đối soát ghi +10.92% ở 10 bps/chân. Giữ nguyên toàn bộ vị thế và
+giá đã book, chỉ cộng thêm phí theo turnover, lợi nhuận giả định còn +8.22%
+ở 20 bps, +3.02% ở 40 bps và +0.51% ở 50 bps/chân. Đây là phân tích độ nhạy
+trên đúng 76 ngày đã thấy, không dự báo phí hoặc lợi nhuận tương lai.
+
+## 19/10/2026 — LOWVOL-XS dừng ở discovery
+
+Chạy đủ bốn ô đã đăng ký trong `RESEARCH_PREREG_Q4_2026.md` trên 42 mã discovery,
+panel cache 599 ngày kết thúc 31/07/2026, phí 10 bps/chân và 200 lần null cho
+mỗi ô. Hedge BTC được ước lượng bằng OLS 90 ngày, kẹp beta [0,3], thêm vào
+rổ trước khi shift sang ngày giao dịch. Turnover trung bình của null nằm trong
+10% turnover thật ở cả bốn ô, nên p-value có thể đọc.
+
+| Ô | Sharpe | p-value null | alpha t so với carry | Kết luận |
+|---|---:|---:|---:|---|
+| Log-return 30d | 0.53 | 0.139 | 0.70 | Trượt |
+| Log-return 90d | 0.40 | 0.234 | 0.39 | Trượt |
+| Parkinson 30d | 0.82 | 0.060 | 0.88 | Trượt p < 0.0125, alpha > 2 và ổn định hai nửa |
+| Parkinson 90d | 0.31 | 0.294 | 0.08 | Trượt |
+
+Cả bốn phiên bản có Sharpe *sau hedge* thấp hơn bản không hedge, một điều kiện
+dừng khác đã viết trước. Không có nominee nên hold-out 33 mã **không được mở**.
+File: `run_lowvol_xs_lab.py`, `reports/lowvol_xs_discovery.json`.
+
+## 20/10/2026 — SMART-VS-CROWD dừng ở cổng discovery đã đăng ký
+
+Đã tải archive cho đủ 42 mã discovery trong đúng cửa sổ giá cố định 599 ngày
+(10/12/2024–31/07/2026). Có 41 mã đạt ít nhất 400 ngày khớp và giao dịch được;
+MKR bị loại theo ngưỡng này. Ngày 29/08/2025 archive chỉ có 285 thay vì 288
+bản ghi 5 phút trên toàn thị trường; ngày đó để thiếu. Các ngày archive thiếu
+sau khi TON ngừng giao dịch cũng để thiếu, không tự điền. Tổng cộng 24.479
+ngày-mã hợp lệ. Đối chiếu archive[D] với REST[D+1] trên 40 mã còn giao dịch
+ở cuối panel, 30 ngày/mã gần đây: tỷ lệ top trader, tỷ lệ tài khoản toàn thị
+trường và open interest đều có **0/1.200** điểm lệch quá 1%. TON không còn
+REST hiện hành nên không nằm trong phép đối chiếu gần đây; lịch sử TON vẫn chịu
+quy tắc thiếu dữ liệu và zombie guard. File nguồn:
+`reports/smart_vs_crowd_source_check.json`.
+
+Chạy đúng hai cửa sổ D thô đã khóa, 7 và 30 ngày, long 20% D cao nhất, short
+20% thấp nhất, 0,5 gross mỗi bên, khớp ngày kế tiếp. Phí giả định 10 bps/chân.
+
+| Discovery | Sharpe gộp | Sharpe ròng | Lãi ròng/năm | Blend 50/50 tăng Sharpe so với carry |
+|---|---:|---:|---:|---:|
+| D7 | −0,63 | −0,95 | −13,00% | −0,84 |
+| D30 | +0,26 | +0,13 | +1,82% | −0,31 |
+
+Cả hai Sharpe gộp đều dưới **0,5**, đúng tiêu chí giết sớm đã đăng ký. D30
+còn có nửa sau âm. RESIDUAL và CROWD-ONLY chỉ được tính mô tả trong cùng lượt
+discovery (Sharpe ròng +0,32 và +0,70), **chưa có kiểm định null**, không phải
+ứng viên. Dừng cell ở `STOP_CHEAP_GATE`; không chạy permutation null và
+**không mở hold-out 33 mã**. Không đổi chiều tín hiệu, ngưỡng hay universe sau
+khi thấy kết quả. File: `run_smart_vs_crowd_lab.py`,
+`reports/smart_vs_crowd_discovery.json`.
+
+`execution_quality.csv` cũ chỉ có 119 lệnh vì bộ dựng dùng cache 90 ngày bị
+cũ và khóa trùng `(run_id,symbol,reason)` làm rơi lệnh chia nhỏ. Đã sửa để
+dựng lại theo từng `order_id`, lấy open ở đúng dải ngày lịch sử, ghi file
+nguyên tử và từ chối kết quả thiếu. `gate_report.py` giờ kiểm số lệnh COMPLETE
+trong audit SQLite trước khi chấp nhận CSV. **338/338** lệnh hiện có giá open;
+shortfall trung bình theo lệnh là **+8,99 bps** (cổng khóa ngưỡng ≤10 bps),
+còn theo notional là **+9,17 bps**. Mốc mid lúc gửi lệnh cho slippage theo
+notional +7,63 bps; không cộng thêm vào shortfall so với open.
+
+Đối chiếu trực tiếp `userTrades` trên Binance Demo Futures với mọi orderId
+thường trong **13 phiên COMPLETE**: khớp đủ 338/338 lệnh, 406 trades,
+$16.897,62 notional. Hoa hồng ghi bằng USDT là $7,0221, **4,16 bps** theo
+notional; tỷ trọng maker **0%**. Hoa hồng + shortfall so với open paper là
+**13,32 bps** theo notional. Đây là phép đo sàn demo, không phải dự báo live.
+File: `audit_execution_fees.py`, `reports/execution_fee_audit.json`.
+
+Mức phí maker riêng của tài khoản demo trên toàn bộ mã đã giao dịch là 2 bps.
+Ngay cả phản thực tế cực tốt là 100% notional maker ở **cùng giá** đã khớp,
+chỉ tiết kiệm được 2,16 bps phí và all-in còn **11,17 bps**, vẫn vượt giả
+định paper 10 bps/chân. Giá tốt hơn có thể giúp, nhưng chưa biết lệnh maker
+có khớp hay không và chi phí fallback; không suy từ trần phí ra lợi nhuận.
+Nhóm `close_orphan` có shortfall +17,19 bps theo notional, `rebalance`
++6,03 bps; đây là mô tả mẫu, không phải lý do tự đổi thứ tự lệnh. File:
+`audit_execution_opportunity.py`, `reports/execution_opportunity.json` và
+`EXECUTION_COST_EXPERIMENT.md`. Gate hiện vẫn dùng ngưỡng **shortfall theo
+lệnh** đã khóa, nên PASS ở +8,99 bps; phép đo all-in 13,32 bps là cảnh báo
+kinh tế bổ sung phải đọc trước quyết định vốn, không được âm thầm đổi gate.
+
+## 20/10/2026 — SHORT + BTC hedge: thăm dò lịch sử, chưa có ứng viên
+
+Theo yêu cầu kiểm tra sớm, đã viết quy tắc một ô trong
+`RESEARCH_Q1_SHORT_BTC_PROTOCOL.md` trước khi chạy. Cả hai tập lịch sử đã
+được xem phân rã hai chân, nên đây **không phải xác nhận OOS sạch**. Rổ short
+20% funding cao, beta BTC OLS 90 ngày, kẹp [0,3], hedge BTC, chuẩn hóa gross
+về 1, phí 10 bps/chân và lag một ngày:
+
+| Cùng 508 ngày có beta | 42 mã discovery | 33 mã rời đã xem lịch sử |
+|---|---:|---:|
+| Sharpe v1 | +1,74 | +1,95 |
+| Sharpe short + BTC | **+0,12** | **+1,62** |
+| Lãi/năm v1 | +31,70% | +42,45% |
+| Lãi/năm short + BTC | **+2,43%** | **+31,65%** |
+
+Ứng viên thua v1 trên cả hai tập; discovery có nửa sau −8,95% và drawdown
+−19,72% so với v1 −14,68%. Dừng hướng này ở quy tắc đã thử, không tìm thêm
+beta window hay quy mô hedge sau khi thấy số. `explore_short_btc_hedge.py`
+chỉ ghi `reports/short_btc_hedge_exploratory.json`; không tạo targets và không
+đụng v1. Nếu Q1 có giả thuyết mới, phải đăng ký lại trên dữ liệu tương lai.
